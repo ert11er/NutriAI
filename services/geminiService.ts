@@ -53,7 +53,8 @@ const dietPlanSchema = {
     },
     weeklyPlan: {
       type: "ARRAY",
-      items: dayPlanSchema
+      items: dayPlanSchema,
+      description: "Haftalık plan. Haftanın tüm günlerini (Pazartesi, Salı, Çarşamba, Perşembe, Cuma, Cumartesi, Pazar) kapsayan TAM OLARAK 7 günlük veri nesnesi içermelidir. Eksik gün bırakılmamalıdır."
     },
     tips: {
       type: "ARRAY",
@@ -79,12 +80,43 @@ const aiResponseSchema = {
   required: ["type"]
 };
 
+const getDurationText = (duration?: string) => {
+  switch (duration) {
+    case '5_days':
+      return {
+        label: "5 Günlük Diyet Planı",
+        instruction: "Süresi: 5 Gün. haftalık plan (weeklyPlan) dizisi TAM OLARAK 5 gün içermelidir (Gün 1, Gün 2, Gün 3, Gün 4, Gün 5). Eksik gün bırakmayın."
+      };
+    case '2_weeks':
+      return {
+        label: "2 Haftalık Diyet Planı (14 Gün)",
+        instruction: "Süresi: 14 Gün. haftalık plan (weeklyPlan) dizisi TAM OLARAK 14 gün içermelidir (Gün 1, Gün 2, ..., Gün 14). Eksik gün bırakmayın."
+      };
+    case '1_month':
+      return {
+        label: "1 Aylık Diyet Planı (30 Gün)",
+        instruction: "Süresi: 1 Aylık Döngüsel Plan. Çıktı ve token limitlerine takılmamak adına, haftalık plan (weeklyPlan) dizisine TAM OLARAK 14 günlük detaylı menü (Gün 1'den Gün 14'e kadar) ekleyin. Öneriler (tips) dizisinde ise bu 14 günlük menüyü 30 güne nasıl tamamlayacaklarını, haftalık değişiklikleri ve rotasyon önerilerini detaylıca anlatın."
+      };
+    case '1_week':
+    default:
+      return {
+        label: "1 Haftalık Diyet Planı (7 Gün)",
+        instruction: "Süresi: 7 Gün. haftalık plan (weeklyPlan) dizisi TAM OLARAK 7 gün içermelidir (Pazartesi, Salı, Çarşamba, Perşembe, Cuma, Cumartesi, Pazar). Eksik gün bırakmayın."
+      };
+  }
+};
+
 export const analyzeAndAsk = async (userData: UserData): Promise<AIResponse> => {
+  const durationInfo = getDurationText(userData.duration);
   const prompt = `
     Kullanıcı bir diyet planı istiyor. Verilerini aşağıda görebilirsin. 
     Lütfen bu verileri analiz et veya 2-3 ek soru sor (Örn: Bütçe, mutfak ekipmanı, iş saatleri vb.). Eğer soru soracaksan, "questions" tipinde yanıt ver. 
     Eğer veriler yeterliyse doğrudan "plan" tipinde tam bir diyet planı oluştur.
     
+    ÖNEMLİ: Eğer doğrudan diyet planı ("plan") oluşturacaksan, planın süresi şudur:
+    Seçilen Süre: ${durationInfo.label}
+    Süre Talimatı: ${durationInfo.instruction}
+
     Kullanıcı Verileri:
     - Yaş: ${userData.age || 'Belirtilmedi'}, Cinsiyet: ${userData.gender || 'Belirtilmedi'}
     - Kilo: ${userData.weight ? userData.weight + ' kg' : 'Belirtilmedi'}, Boy: ${userData.height ? userData.height + ' cm' : 'Belirtilmedi'}
@@ -94,6 +126,7 @@ export const analyzeAndAsk = async (userData: UserData): Promise<AIResponse> => 
     - Sevilmeyenler: ${userData.dislikedFoods || 'Yok'}
     - Tıbbi Durumlar: ${userData.medicalConditions || 'Yok'}
     - Özel İstekler: ${userData.extraNotes || 'Yok'}
+    - Seçilen Süre: ${durationInfo.label}
     
     Yanıt formatın MUTLAKA JSON olmalı ve "type" alanı ('questions' veya 'plan') içermeli.
   `;
@@ -114,10 +147,16 @@ export const analyzeAndAsk = async (userData: UserData): Promise<AIResponse> => 
 
 export const generateFinalPlan = async (userData: UserData, answers: Record<string, string>): Promise<DietPlan> => {
   const answersString = Object.entries(answers).map(([q, a]) => `Soru: ${q}\nCevap: ${a}`).join('\n');
+  const durationInfo = getDurationText(userData.duration);
   
   const prompt = `
     Kullanıcının temel verileri ve ek sorulara verdiği yanıtlar aşağıdadır. 
-    Lütfen profesyonel, esnek ve detaylı bir 7 günlük diyet planı oluştur.
+    Lütfen profesyonel, esnek ve detaylı bir diyet planı oluşturun.
+    
+    Seçilen Plan Süresi: ${durationInfo.label}
+    Süre Talimatı: ${durationInfo.instruction}
+    
+    Her günün (day) adı Türkçe olmalı (Örn: "Pazartesi", "Salı" vb. ya da 2 haftalık/1 aylık ise "Gün 1", "Gün 2" vb. şeklinde).
     Her öğün için benzersiz bir ID (örn: gun1-kahvalti), hazırlanış süresi, porsiyon bilgisi, malzemeler (liste olarak) ve 1-2 alternatif (liste olarak) ekle.
 
     ÖZELLİKLE kullanıcının şu özel isteğini/notunu dikkate al: "${userData.extraNotes || 'Yok'}"
@@ -129,7 +168,7 @@ export const generateFinalPlan = async (userData: UserData, answers: Record<stri
     Yanıt dili Türkçe olmalı.
     Plan Şunları İçermeli:
     1. Günlük Kalori ve Makro (Protein, Karbonhidrat, Yağ) hedefleri.
-    2. 7 günün her biri için öğünler.
+    2. Belirtilen sürenin her günü için öğünler.
     3. Her öğün için kalori tahmini ve tarif/içerik özeti.
     
     Yanıtı SADECE JSON formatında döndür.

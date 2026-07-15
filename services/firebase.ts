@@ -34,6 +34,14 @@ export async function saveDietPlan(userData: UserData, plan: DietPlan): Promise<
   return planId;
 }
 
+export async function updateDietPlan(planId: string, userData: UserData, plan: DietPlan): Promise<void> {
+  const planRef = doc(db, 'plans', planId);
+  await setDoc(planRef, {
+    userData,
+    plan
+  }, { merge: true });
+}
+
 export async function getDietPlan(planId: string): Promise<{ userData: UserData; plan: DietPlan } | null> {
   const planRef = doc(db, 'plans', planId);
   const planSnap = await getDoc(planRef);

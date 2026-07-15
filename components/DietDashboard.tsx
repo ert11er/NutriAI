@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { DietPlan, UserData, Meal, WeightEntry } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { saveDietPlan } from '../services/firebase';
+import { saveDietPlan, updateDietPlan } from '../services/firebase';
 
 interface DietDashboardProps {
   plan: DietPlan;
@@ -10,9 +10,10 @@ interface DietDashboardProps {
   onReset: () => void;
   weightHistory: WeightEntry[];
   planId?: string;
+  onUpdatePlan?: (updatedPlan: DietPlan) => void;
 }
 
-const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, weightHistory, planId }) => {
+const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, weightHistory, planId, onUpdatePlan }) => {
   const [activeDay, setActiveDay] = useState(0);
   const [expandedMeals, setExpandedMeals] = useState<Set<string>>(new Set());
   const [favoriteMeals, setFavoriteMeals] = useState<Set<string>>(new Set());
@@ -22,6 +23,143 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
   const [isSharing, setIsSharing] = useState(false);
   const [sharedId, setSharedId] = useState<string | null>(planId || null);
   const [copySuccess, setCopySuccess] = useState(false);
+
+  const [hasDietitianWarningAcknowledged, setHasDietitianWarningAcknowledged] = useState(false);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [pendingEditMeal, setPendingEditMeal] = useState<Meal | null>(null);
+  const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
+  const [formMeal, setFormMeal] = useState<Meal | null>(null);
+  
+  const [isEditingGeneral, setIsEditingGeneral] = useState(false);
+  const [formGeneral, setFormGeneral] = useState<{
+    summary: string;
+    dailyCalories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  } | null>(null);
+  const [pendingGeneralEdit, setPendingGeneralEdit] = useState(false);
+
+  const handleEditMealClick = (meal: Meal) => {
+    if (!hasDietitianWarningAcknowledged) {
+      setPendingEditMeal(meal);
+      setShowWarningModal(true);
+    } else {
+      setEditingMeal(meal);
+      setFormMeal({
+        ...meal,
+        ingredients: meal.ingredients || [],
+        alternatives: meal.alternatives || []
+      });
+    }
+  };
+
+  const handleEditGeneralClick = () => {
+    if (!hasDietitianWarningAcknowledged) {
+      setPendingGeneralEdit(true);
+      setShowWarningModal(true);
+    } else {
+      setIsEditingGeneral(true);
+      setFormGeneral({
+        summary: plan.summary || '',
+        dailyCalories: plan.dailyCalories || 0,
+        protein: plan.macros?.protein || 0,
+        carbs: plan.macros?.carbs || 0,
+        fat: plan.macros?.fat || 0
+      });
+    }
+  };
+
+  const handleConfirmWarning = () => {
+    setHasDietitianWarningAcknowledged(true);
+    setShowWarningModal(false);
+    if (pendingEditMeal) {
+      setEditingMeal(pendingEditMeal);
+      setFormMeal({
+        ...pendingEditMeal,
+        ingredients: pendingEditMeal.ingredients || [],
+        alternatives: pendingEditMeal.alternatives || []
+      });
+      setPendingEditMeal(null);
+    } else if (pendingGeneralEdit) {
+      setIsEditingGeneral(true);
+      setFormGeneral({
+        summary: plan.summary || '',
+        dailyCalories: plan.dailyCalories || 0,
+        protein: plan.macros?.protein || 0,
+        carbs: plan.macros?.carbs || 0,
+        fat: plan.macros?.fat || 0
+      });
+      setPendingGeneralEdit(false);
+    }
+  };
+
+  const handleSaveMeal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formMeal) return;
+
+    const updatedMeal: Meal = {
+      ...formMeal,
+      calories: Number(formMeal.calories) || 0,
+      protein: Number(formMeal.protein) || 0,
+      carbs: Number(formMeal.carbs) || 0,
+      fat: Number(formMeal.fat) || 0,
+    };
+
+    const updatedPlan: DietPlan = {
+      ...plan,
+      weeklyPlan: plan.weeklyPlan.map(dayPlan => ({
+        ...dayPlan,
+        meals: dayPlan.meals.map(m => m.id === updatedMeal.id ? updatedMeal : m)
+      }))
+    };
+
+    if (onUpdatePlan) {
+      onUpdatePlan(updatedPlan);
+    }
+
+    if (sharedId) {
+      try {
+        await updateDietPlan(sharedId, userData, updatedPlan);
+      } catch (error) {
+        console.error("Firestore update failed:", error);
+      }
+    }
+
+    setEditingMeal(null);
+    setFormMeal(null);
+  };
+
+  const handleSaveGeneral = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formGeneral) return;
+
+    const updatedPlan: DietPlan = {
+      ...plan,
+      summary: formGeneral.summary,
+      dailyCalories: Number(formGeneral.dailyCalories) || 0,
+      macros: {
+        protein: Number(formGeneral.protein) || 0,
+        carbs: Number(formGeneral.carbs) || 0,
+        fat: Number(formGeneral.fat) || 0
+      }
+    };
+
+    if (onUpdatePlan) {
+      onUpdatePlan(updatedPlan);
+    }
+
+    if (sharedId) {
+      try {
+        await updateDietPlan(sharedId, userData, updatedPlan);
+      } catch (error) {
+        console.error("Firestore update failed:", error);
+      }
+    }
+
+    setIsEditingGeneral(false);
+    setFormGeneral(null);
+  };
   
   const dashboardRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -150,7 +288,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
     content += `ÖZET: ${plan.summary || ''}\n\n`;
     const macros = plan.macros || { protein: 0, carbs: 0, fat: 0 };
     content += `GÜNLÜK HEDEFLER:\n- Kalori: ${plan.dailyCalories || 0} kcal\n- Protein: ${macros.protein || 0} g\n- Karbonhidrat: ${macros.carbs || 0} g\n- Yağ: ${macros.fat || 0} g\n\n`;
-    content += `HAFTALIK PLAN:\n----------------------------------------\n\n`;
+    content += `DİYET PLANI DETAYLARI:\n----------------------------------------\n\n`;
     const weeklyPlan = plan.weeklyPlan || [];
     weeklyPlan.forEach(day => {
       content += `--- ${day.day.toUpperCase()} ---\n`;
@@ -356,7 +494,15 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                 </div>
               </div>
             )}
-            <h2 className="text-3xl font-extrabold text-green-950 mb-4 tracking-tight">Plan Özetiniz</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-3xl font-extrabold text-green-950 tracking-tight">Plan Özetiniz</h2>
+              <button 
+                onClick={handleEditGeneralClick}
+                className="px-4 py-2 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-all flex items-center gap-1.5 no-print animate-in fade-in duration-300"
+              >
+                <i className="fas fa-edit text-[10px]"></i> Hedefleri Düzenle
+              </button>
+            </div>
             <p className="text-green-800/80 leading-relaxed font-medium mb-8">{plan.summary}</p>
             
             <div className="flex flex-wrap gap-4">
@@ -529,24 +675,32 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   </div>
                 </div>
                 <p className="text-sm font-medium text-emerald-800/70 mb-8 leading-relaxed">{meal.description}</p>
-                {(meal.prepTime || meal.servings || meal.ingredients?.length || meal.alternatives?.length) && (
-                  <div className="mt-6 border-t border-emerald-100/50 pt-6">
+                <div className="mt-6 border-t border-emerald-100/50 pt-6 flex items-center justify-between no-print">
+                  {(meal.prepTime || meal.servings || meal.ingredients?.length || meal.alternatives?.length) ? (
                     <button onClick={() => toggleExpandMeal(meal.id)} className="text-emerald-600 font-bold flex items-center gap-2 hover:text-emerald-800 transition" aria-expanded={expandedMeals.has(meal.id)} aria-controls={`recipe-details-${meal.id}`}>
                       Tarif Detayları <i className={`fas fa-chevron-${expandedMeals.has(meal.id) ? 'up' : 'down'} text-xs`}></i>
                     </button>
-                    {expandedMeals.has(meal.id) && (
-                      <div id={`recipe-details-${meal.id}`} className="mt-4 space-y-3 text-sm text-emerald-800 animate-in fade-in slide-in-from-top-2 duration-300">
-                        {meal.prepTime && <p><strong>Hazırlık Süresi:</strong> {meal.prepTime}</p>}
-                        {meal.servings && <p><strong>Porsiyon:</strong> {meal.servings}</p>}
-                        {meal.ingredients?.length && <div><p className="font-bold mb-1">Malzemeler:</p><ul className="list-disc list-inside pl-2 space-y-0.5">{meal.ingredients.map((ing, idx) => <li key={idx}>{ing}</li>)}</ul></div>}
-                        {meal.alternatives?.length && <div><p className="font-bold mb-1">Alternatifler:</p><ul className="list-disc list-inside pl-2 space-y-0.5">{meal.alternatives.map((alt, idx) => <li key={idx}>{alt}</li>)}</ul></div>}
-                        <div className="mt-4 pt-4 border-t border-emerald-100 flex items-center gap-3">
-                          <span className="text-xs font-bold text-emerald-600">Tarifi İndir:</span>
-                          <button onClick={() => handleDownloadRecipeTxt(meal)} className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-lg hover:bg-blue-200 transition" title="Metin olarak indir"><i className="fas fa-file-alt mr-1"></i> TXT</button>
-                          <button onClick={() => handleDownloadRecipeJson(meal)} className="px-3 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-lg hover:bg-purple-200 transition" title="JSON olarak indir"><i className="fas fa-file-code mr-1"></i> JSON</button>
-                        </div>
-                      </div>
-                    )}
+                  ) : (
+                    <span className="text-xs text-emerald-600/40 font-bold">Tarif bilgisi yok</span>
+                  )}
+                  <button 
+                    onClick={() => handleEditMealClick(meal)} 
+                    className="text-amber-600 hover:text-amber-800 font-bold flex items-center gap-1.5 transition"
+                  >
+                    <i className="fas fa-edit text-xs"></i> Düzenle
+                  </button>
+                </div>
+                {expandedMeals.has(meal.id) && (meal.prepTime || meal.servings || meal.ingredients?.length || meal.alternatives?.length) && (
+                  <div id={`recipe-details-${meal.id}`} className="mt-4 space-y-3 text-sm text-emerald-800 animate-in fade-in slide-in-from-top-2 duration-300">
+                    {meal.prepTime && <p><strong>Hazırlık Süresi:</strong> {meal.prepTime}</p>}
+                    {meal.servings && <p><strong>Porsiyon:</strong> {meal.servings}</p>}
+                    {meal.ingredients?.length && <div><p className="font-bold mb-1">Malzemeler:</p><ul className="list-disc list-inside pl-2 space-y-0.5">{meal.ingredients.map((ing, idx) => <li key={idx}>{ing}</li>)}</ul></div>}
+                    {meal.alternatives?.length && <div><p className="font-bold mb-1">Alternatifler:</p><ul className="list-disc list-inside pl-2 space-y-0.5">{meal.alternatives.map((alt, idx) => <li key={idx}>{alt}</li>)}</ul></div>}
+                    <div className="mt-4 pt-4 border-t border-emerald-100 flex items-center gap-3">
+                      <span className="text-xs font-bold text-emerald-600">Tarifi İndir:</span>
+                      <button onClick={() => handleDownloadRecipeTxt(meal)} className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-lg hover:bg-blue-200 transition" title="Metin olarak indir"><i className="fas fa-file-alt mr-1"></i> TXT</button>
+                      <button onClick={() => handleDownloadRecipeJson(meal)} className="px-3 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-lg hover:bg-purple-200 transition" title="JSON olarak indir"><i className="fas fa-file-code mr-1"></i> JSON</button>
+                    </div>
                   </div>
                 )}
                 <div className="flex gap-8 border-t border-emerald-100/50 pt-6 mt-8">
@@ -580,6 +734,299 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
               <button onClick={() => setShowShoppingList(false)} className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition">Kapat</button>
               <button onClick={() => { handleDownloadShoppingList(); setShowShoppingList(false);}} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition">Listeyi İndir</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Diyetisyen Uyarı Modalı */}
+      {showWarningModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 no-print">
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl max-w-md w-full border border-amber-100 relative animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-600 mb-6 mx-auto">
+              <i className="fas fa-exclamation-triangle text-2xl"></i>
+            </div>
+            <h3 className="text-xl font-extrabold text-amber-950 mb-3 text-center">⚠️ Profesyonel Diyetisyen Uyarısı</h3>
+            <p className="text-sm text-amber-900/80 leading-relaxed mb-6 text-center font-semibold">
+              Bu düzenleme paneli ve diyet planı değişiklik özellikleri yalnızca profesyonel diyetisyenler ve beslenme uzmanları tarafından kullanılmalıdır.
+            </p>
+            <p className="text-xs text-amber-800/70 leading-relaxed mb-8 text-center bg-amber-50/50 p-4 rounded-2xl border border-amber-100">
+              Diyetisyen gözetimi veya onayı olmadan diyet üzerinde yapılacak bilinçsiz değişiklikler, kalori/makro dengesizlikleri yaratarak sağlık riskleri oluşturabilir. Bu aracı uzman gözetiminde kullandığınızı onaylıyor musunuz?
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => { setShowWarningModal(false); setPendingEditMeal(null); setPendingGeneralEdit(false); }}
+                className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-all text-sm"
+              >
+                Vazgeç
+              </button>
+              <button 
+                onClick={handleConfirmWarning}
+                className="flex-1 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-amber-200 text-sm"
+              >
+                Evet, Onaylıyorum
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Öğün Düzenleme Modalı */}
+      {editingMeal && formMeal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 no-print" onClick={() => { setEditingMeal(null); setFormMeal(null); }}>
+          <div className="bg-white rounded-[2rem] max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-black text-amber-600 uppercase tracking-widest block mb-1">Diyetisyen Düzenleme Paneli</span>
+                <h3 className="text-2xl font-black text-emerald-950">Öğünü Düzenle</h3>
+              </div>
+              <button onClick={() => { setEditingMeal(null); setFormMeal(null); }} className="w-10 h-10 rounded-full bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-colors">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+
+            {/* Form Content */}
+            <form onSubmit={handleSaveMeal} className="flex-1 overflow-y-auto p-8 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-bold text-emerald-900 mb-1.5">Yemek / Tarif Adı</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={formMeal.dish}
+                    onChange={(e) => setFormMeal({ ...formMeal, dish: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-semibold text-emerald-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-emerald-900 mb-1.5">Öğün Zamanı / Saati</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={formMeal.time}
+                    onChange={(e) => setFormMeal({ ...formMeal, time: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-semibold text-emerald-950"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-emerald-900 mb-1.5">Açıklama / Hazırlanış Özeti</label>
+                <textarea 
+                  required
+                  rows={3}
+                  value={formMeal.description}
+                  onChange={(e) => setFormMeal({ ...formMeal, description: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-semibold text-emerald-950 resize-none"
+                />
+              </div>
+
+              {/* Nutrients Row */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-5 bg-emerald-50/50 rounded-2xl border border-emerald-100/50">
+                <div>
+                  <label className="block text-[10px] font-black text-emerald-600 uppercase tracking-wider mb-1">Kalori (kcal)</label>
+                  <input 
+                    type="number" 
+                    required
+                    min={0}
+                    value={formMeal.calories}
+                    onChange={(e) => setFormMeal({ ...formMeal, calories: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-emerald-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-emerald-600 uppercase tracking-wider mb-1">Protein (g)</label>
+                  <input 
+                    type="number" 
+                    required
+                    min={0}
+                    value={formMeal.protein}
+                    onChange={(e) => setFormMeal({ ...formMeal, protein: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-emerald-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-blue-600 uppercase tracking-wider mb-1">Karbonhidrat (g)</label>
+                  <input 
+                    type="number" 
+                    required
+                    min={0}
+                    value={formMeal.carbs}
+                    onChange={(e) => setFormMeal({ ...formMeal, carbs: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-emerald-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-amber-600 uppercase tracking-wider mb-1">Yağ (g)</label>
+                  <input 
+                    type="number" 
+                    required
+                    min={0}
+                    value={formMeal.fat}
+                    onChange={(e) => setFormMeal({ ...formMeal, fat: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-emerald-950"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-bold text-emerald-900 mb-1.5">Hazırlık Süresi (Örn: 15 dk)</label>
+                  <input 
+                    type="text" 
+                    value={formMeal.prepTime || ''}
+                    onChange={(e) => setFormMeal({ ...formMeal, prepTime: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-semibold text-emerald-950"
+                    placeholder="Belirtilmemiş"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-emerald-900 mb-1.5">Porsiyon (Örn: 1 porsiyon)</label>
+                  <input 
+                    type="text" 
+                    value={formMeal.servings || ''}
+                    onChange={(e) => setFormMeal({ ...formMeal, servings: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-semibold text-emerald-950"
+                    placeholder="Belirtilmemiş"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-emerald-900 mb-1">Malzemeler (Her satıra bir tane)</label>
+                <span className="text-[10px] text-gray-400 block mb-1.5">Malzemeleri alt alta yazın</span>
+                <textarea 
+                  rows={4}
+                  value={(formMeal.ingredients || []).join('\n')}
+                  onChange={(e) => setFormMeal({ ...formMeal, ingredients: e.target.value.split('\n') })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-semibold font-mono text-sm text-emerald-950"
+                  placeholder="Örn: 2 adet yumurta&#10;1 dilim süzme peynir"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-emerald-900 mb-1">Alternatifler (Her satıra bir tane)</label>
+                <span className="text-[10px] text-gray-400 block mb-1.5">Alternatifleri alt alta yazın</span>
+                <textarea 
+                  rows={3}
+                  value={(formMeal.alternatives || []).join('\n')}
+                  onChange={(e) => setFormMeal({ ...formMeal, alternatives: e.target.value.split('\n') })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-semibold font-mono text-sm text-emerald-950"
+                  placeholder="Örn: 1 kase yulaf ezmesi&#10;3 adet ceviz içi"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="pt-4 border-t border-gray-100 flex justify-end gap-3 sticky bottom-0 bg-white pb-2">
+                <button 
+                  type="button"
+                  onClick={() => { setEditingMeal(null); setFormMeal(null); }}
+                  className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-all text-sm"
+                >
+                  Kapat
+                </button>
+                <button 
+                  type="submit"
+                  className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-200 text-sm"
+                >
+                  Kaydet
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Genel Hedefler Düzenleme Modalı */}
+      {isEditingGeneral && formGeneral && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 no-print" onClick={() => { setIsEditingGeneral(false); setFormGeneral(null); }}>
+          <div className="bg-white rounded-[2rem] max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-black text-amber-600 uppercase tracking-widest block mb-1">Diyetisyen Düzenleme Paneli</span>
+                <h3 className="text-2xl font-black text-emerald-950">Genel Hedefleri Düzenle</h3>
+              </div>
+              <button onClick={() => { setIsEditingGeneral(false); setFormGeneral(null); }} className="w-10 h-10 rounded-full bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-colors">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveGeneral} className="flex-1 overflow-y-auto p-8 space-y-6">
+              <div>
+                <label className="block text-sm font-bold text-emerald-900 mb-1.5">Plan Özeti</label>
+                <textarea 
+                  required
+                  rows={4}
+                  value={formGeneral.summary}
+                  onChange={(e) => setFormGeneral({ ...formGeneral, summary: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-semibold text-emerald-950 resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-emerald-900 mb-1.5">Günlük Hedef Kalori (kcal)</label>
+                <input 
+                  type="number" 
+                  required
+                  min={0}
+                  value={formGeneral.dailyCalories}
+                  onChange={(e) => setFormGeneral({ ...formGeneral, dailyCalories: Number(e.target.value) })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-emerald-950"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4 p-5 bg-emerald-50/50 rounded-2xl border border-emerald-100/50">
+                <div>
+                  <label className="block text-[10px] font-black text-emerald-600 uppercase tracking-wider mb-1">Protein (g)</label>
+                  <input 
+                    type="number" 
+                    required
+                    min={0}
+                    value={formGeneral.protein}
+                    onChange={(e) => setFormGeneral({ ...formGeneral, protein: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-emerald-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-blue-600 uppercase tracking-wider mb-1">Karbonhidrat (g)</label>
+                  <input 
+                    type="number" 
+                    required
+                    min={0}
+                    value={formGeneral.carbs}
+                    onChange={(e) => setFormGeneral({ ...formGeneral, carbs: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-emerald-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-amber-600 uppercase tracking-wider mb-1">Yağ (g)</label>
+                  <input 
+                    type="number" 
+                    required
+                    min={0}
+                    value={formGeneral.fat}
+                    onChange={(e) => setFormGeneral({ ...formGeneral, fat: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-emerald-950"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-gray-100 flex justify-end gap-3">
+                <button 
+                  type="button"
+                  onClick={() => { setIsEditingGeneral(false); setFormGeneral(null); }}
+                  className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-all text-sm"
+                >
+                  Kapat
+                </button>
+                <button 
+                  type="submit"
+                  className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-200 text-sm"
+                >
+                  Kaydet
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -11,6 +11,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
     gender: 'male',
     activityLevel: 'moderate',
     goal: 'maintain',
+    duration: '1_week',
     restrictions: [],
     allergies: '',
     dislikedFoods: '',
@@ -123,6 +124,19 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
               <option value="lose">Kilo Vermek</option>
               <option value="maintain">Kiloyu Korumak</option>
               <option value="gain">Kas/Kilo Almak</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-green-700 mb-1">Diyet Süresi</label>
+            <select 
+              name="duration" value={formData.duration || '1_week'} onChange={handleChange}
+              className="w-full px-4 py-2 rounded-xl border border-green-100 focus:ring-2 focus:ring-green-500 outline-none font-medium"
+            >
+              <option value="5_days">5 Günlük Diyet Planı</option>
+              <option value="1_week">1 Haftalık Diyet Planı</option>
+              <option value="2_weeks">2 Haftalık Diyet Planı</option>
+              <option value="1_month">1 Aylık Diyet Planı (Döngüsel/Önerili)</option>
             </select>
           </div>
         </div>

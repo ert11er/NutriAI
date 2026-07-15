@@ -26,6 +26,11 @@ service cloud.firestore {
       // Anyone can create a plan (since we don't have auth yet, and it's a shareable tool)
       // but it must be valid
       allow create: if isValidPlanId(planId) && isValidDietPlanRecord(request.resource.data);
+
+      // Anyone can update a plan
+      allow update: if isValidPlanId(planId)
+        && request.resource.data.userData is map
+        && request.resource.data.plan is map;
     }
   }
 }

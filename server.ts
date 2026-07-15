@@ -36,11 +36,30 @@ async function startServer() {
         config.responseSchema = schema;
       }
       
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite",
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config
-      });
+      const models = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.1-pro-preview"];
+      let lastError = null;
+      let response = null;
+      let usedModel = "";
+
+      for (const model of models) {
+        try {
+          console.log(`Attempting Gemini generation with model: ${model}`);
+          response = await ai.models.generateContent({
+            model,
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            config
+          });
+          usedModel = model;
+          break; // Success! Exit the loop.
+        } catch (err: any) {
+          console.warn(`Model ${model} failed:`, err.message || err);
+          lastError = err;
+        }
+      }
+
+      if (!response) {
+        throw new Error(`Tüm Gemini modelleri başarısız oldu. Son hata: ${lastError?.message || lastError}`);
+      }
 
       const text = response.text || "";
       

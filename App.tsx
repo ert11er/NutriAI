@@ -246,6 +246,7 @@ const Home: React.FC = () => {
                 onReset={handleFullReset}
                 weightHistory={weightHistory}
                 planId={planId}
+                onUpdatePlan={(updatedPlan) => setDietPlan(updatedPlan)}
               />
             )}
           </>

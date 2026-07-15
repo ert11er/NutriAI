@@ -11,6 +11,7 @@ export interface UserData {
   dislikedFoods?: string;
   medicalConditions?: string;
   extraNotes?: string;
+  duration?: '5_days' | '1_week' | '2_weeks' | '1_month';
 }
 
 export interface Meal {
