@@ -5,8 +5,15 @@ import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from 'firebase/fir
 import firebaseConfig from '../firebase-applet-config.json';
 import { UserData, DietPlan } from '../types';
 
-const app = initializeApp(firebaseConfig);
+// Load the API Key from the environment variable or fall back to the config value
+const firebaseApiKey = import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey;
+
+const app = initializeApp({
+  ...firebaseConfig,
+  apiKey: firebaseApiKey
+});
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
 export const auth = getAuth();
 
 /**
