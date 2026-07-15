@@ -1,8 +1,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { DietPlan, UserData, Meal, WeightEntry } from '../types';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import { saveDietPlan, updateDietPlan } from '../services/firebase';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface DietDashboardProps {
   plan: DietPlan;
@@ -354,6 +356,11 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
   };
 
   const macroData = calculateMacroPercentages();
+  const barData = [
+    { name: 'Protein', grams: plan.macros?.protein || 0, fill: '#10b981' },
+    { name: 'Carbs', grams: plan.macros?.carbs || 0, fill: '#3b82f6' },
+    { name: 'Fat', grams: plan.macros?.fat || 0, fill: '#f59e0b' },
+  ];
   const weeklyPlan = plan.weeklyPlan || [];
   const currentDay = weeklyPlan[activeDay] || { day: `Gün ${activeDay + 1}`, meals: [] };
   const currentMeals = currentDay.meals || [];
@@ -361,12 +368,32 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
 
   const handleDownloadPDF = async () => {
     setIsGeneratingPdf(true);
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const element = dashboardRef.current;
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const element = document.getElementById('print-friendly-plan');
     if (!element) { setIsGeneratingPdf(false); return; }
-    const opt = { margin: 10, filename: `NutriAI_Diyet_Plani_${userData.age}yas.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
-    // @ts-ignore
-    await html2pdf().set(opt).from(element).save();
+    
+    const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+    const imgData = canvas.toDataURL('image/jpeg', 1.0);
+    
+    const imgWidth = 190;
+    const pageHeight = 297;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    let heightLeft = imgHeight;
+    let position = 10;
+    
+    pdf.addImage(imgData, 'JPEG', 10, position, imgWidth, imgHeight);
+    heightLeft -= (pageHeight - 20); // Accounting for margins
+    
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 10, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+    
+    pdf.save(`NutriAI_Diyet_Plani_${userData.age}yas.pdf`);
     setIsGeneratingPdf(false);
   };
 
@@ -468,6 +495,37 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700" ref={dashboardRef}>
+       {/* Dedicated Print-Friendly Structure (Only visible when printing or for PDF capture) */}
+       <div id="print-friendly-plan" className="absolute -left-[9999px] top-0 w-[210mm] bg-white p-8 print:static print:block print:w-full print:bg-white">
+         <h1 className="text-4xl font-black text-emerald-950 mb-6">NutriAI Diyet Planınız</h1>
+         <div className="mb-8 p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
+           <h2 className="text-xl font-bold mb-2 text-emerald-900">Genel Özeti</h2>
+           <p className="text-emerald-800 leading-relaxed">{plan.summary}</p>
+           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm font-bold">
+             <p className="text-emerald-900">Günlük Kalori: {plan.dailyCalories} kcal</p>
+             <p className="text-emerald-900">Protein: {plan.macros?.protein} g</p>
+             <p className="text-emerald-900">Karbonhidrat: {plan.macros?.carbs} g</p>
+             <p className="text-emerald-900">Yağ: {plan.macros?.fat} g</p>
+           </div>
+         </div>
+         <div className="space-y-8">
+           {(plan.weeklyPlan || []).map((day, dIdx) => (
+             <div key={dIdx} className="break-inside-avoid border-b pb-6">
+               <h2 className="text-2xl font-black text-emerald-900 mb-4">{day.day}</h2>
+               <div className="grid grid-cols-2 gap-4">
+                  {day.meals.map((meal, mIdx) => (
+                    <div key={mIdx} className="border p-4 rounded-xl bg-gray-50">
+                       <h3 className="font-bold text-lg text-emerald-950">{meal.dish}</h3>
+                       <p className="text-sm text-gray-600 mb-1 font-medium">{meal.time} • {meal.calories} kcal</p>
+                       <p className="text-sm text-gray-800">{meal.description}</p>
+                    </div>
+                  ))}
+               </div>
+             </div>
+           ))}
+         </div>
+       </div>
+
        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white p-8 rounded-[2rem] shadow-sm border border-green-50 flex flex-col md:flex-row gap-8 relative overflow-hidden">
           <div className="flex-1 relative z-10">
@@ -517,7 +575,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
             </div>
           </div>
           
-          <div className="w-full md:w-56 flex flex-col items-center justify-center relative z-10">
+          <div className="w-full md:w-80 flex flex-col items-center justify-center relative z-10 gap-8">
             <div className="w-full h-48" ref={chartContainerRef}>
               {isGeneratingPdf && chartContainerRef.current ? (
                  <PieChart width={chartContainerRef.current.offsetWidth} height={chartContainerRef.current.offsetHeight}>
@@ -537,6 +595,19 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                 </ResponsiveContainer>
               )}
             </div>
+            
+            <div className="w-full h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={barData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" fontSize={10} />
+                  <YAxis fontSize={10} />
+                  <Tooltip />
+                  <Bar dataKey="grams" name="Gram" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            
             <div className="flex justify-center gap-4 text-[10px] font-bold mt-4"> 
               <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> P</span>
               <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-500"></span> C</span>
@@ -616,6 +687,14 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
               </div>
               <button onClick={() => setShowShoppingList(true)} className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-2xl shadow-lg shadow-blue-100 transition-all active:scale-95 no-print" title="Alışveriş Listesini Görüntüle">
                 <i className="fas fa-shopping-basket"></i>
+              </button>
+              <button 
+                onClick={handleDownloadPDF} 
+                className="flex items-center gap-2 px-6 py-3 rounded-2xl shadow-lg transition-all active:scale-95 no-print font-bold bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
+                title="Planı Yazdır (PDF)"
+              >
+                <i className="fas fa-print"></i>
+                Yazdır
               </button>
               <button 
                 onClick={handleShare} 
