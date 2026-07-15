@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper for 10-digit alphanumeric ID
+    function isValidPlanId(id) {
+      return id is string && id.size() == 10 && id.matches('^[a-zA-Z0-9]+$');
+    }
+
+    // Helper to validate DietPlanRecord
+    function isValidDietPlanRecord(data) {
+      return data.keys().hasAll(['userData', 'plan', 'createdAt'])
+        && data.userData is map
+        && data.plan is map
+        && data.createdAt == request.time;
+    }
+
+    match /plans/{planId} {
+      // Anyone can get a plan if they have the 10-digit ID
+      allow get: if isValidPlanId(planId);
+      
+      // Anyone can create a plan (since we don't have auth yet, and it's a shareable tool)
+      // but it must be valid
+      allow create: if isValidPlanId(planId) && isValidDietPlanRecord(request.resource.data);
+    }
+  }
+}

@@ -31,12 +31,12 @@ const QuestionStep: React.FC<QuestionStepProps> = ({ questions, onSubmit, onCanc
         <form onSubmit={handleSubmit} className="space-y-6">
           {questions.map((question, idx) => (
             <div key={idx} className="space-y-2">
-              <label className="block text-sm font-bold text-green-800 ml-1">
+              <label className="block text-sm font-bold text-green-800 ml-1 border-b-2 border-dashed border-blue-400 pb-1 mb-2 inline-block">
                 {question}
               </label>
               <textarea
                 required
-                className="w-full px-4 py-3 rounded-2xl border border-green-100 focus:ring-2 focus:ring-green-500 outline-none transition min-h-[100px] bg-green-50/30"
+                className="w-full px-4 py-3 rounded-2xl border-2 border-dashed border-blue-400 focus:ring-2 focus:ring-blue-500 outline-none transition min-h-[100px] bg-white"
                 placeholder="Yanıtınızı buraya yazın..."
                 onChange={(e) => setAnswers(prev => ({ ...prev, [question]: e.target.value }))}
               />

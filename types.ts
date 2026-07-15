@@ -1,16 +1,16 @@
 
 export interface UserData {
-  age: number;
-  gender: 'male' | 'female' | 'other';
-  weight: number;
-  height: number;
-  activityLevel: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
-  goal: 'lose' | 'maintain' | 'gain';
-  restrictions: string[];
-  allergies: string;
-  dislikedFoods: string;
-  medicalConditions: string;
-  extraNotes: string;
+  age?: number;
+  gender?: 'male' | 'female' | 'other';
+  weight?: number;
+  height?: number;
+  activityLevel?: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
+  goal?: 'lose' | 'maintain' | 'gain';
+  restrictions?: string[];
+  allergies?: string;
+  dislikedFoods?: string;
+  medicalConditions?: string;
+  extraNotes?: string;
 }
 
 export interface Meal {
@@ -54,4 +54,10 @@ export interface AIResponse {
 export interface WeightEntry {
   date: string; // YYYY-MM-DD
   weight: number;
+}
+
+// New interface for the exported/imported JSON structure
+export interface ExportedDietPlanData {
+  userData: UserData;
+  plan: DietPlan;
 }

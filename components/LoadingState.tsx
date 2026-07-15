@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 
 const LoadingState: React.FC = () => {
   const [messageIndex, setMessageIndex] = useState(0);
+  const [showLongWaitMessage, setShowLongWaitMessage] = useState(false); // New state for long wait message
   const messages = [
     "Vücut kitle indeksiniz hesaplanıyor...",
     "Günlük kalori ihtiyacınız analiz ediliyor...",
@@ -13,10 +14,18 @@ const LoadingState: React.FC = () => {
   ];
 
   useEffect(() => {
-    const timer = setInterval(() => {
+    const messageTimer = setInterval(() => {
       setMessageIndex(prev => (prev + 1) % messages.length);
     }, 2500);
-    return () => clearInterval(timer);
+
+    const longWaitTimer = setTimeout(() => {
+      setShowLongWaitMessage(true);
+    }, 30000); // Show additional message after 30 seconds
+
+    return () => {
+      clearInterval(messageTimer);
+      clearTimeout(longWaitTimer);
+    };
   }, []);
 
   return (
@@ -31,6 +40,12 @@ const LoadingState: React.FC = () => {
       <h3 className="text-2xl font-bold text-green-900 mb-2">Planınız Hazırlanıyor</h3>
       <p className="text-green-600 font-medium animate-pulse">{messages[messageIndex]}</p>
       
+      {showLongWaitMessage && (
+        <p className="mt-4 text-orange-600 font-medium text-center animate-in fade-in duration-500">
+          Bu işlem beklenenden uzun sürebilir. Lütfen sabırla bekleyiniz.
+        </p>
+      )}
+
       <div className="mt-12 max-w-sm w-full bg-white p-6 rounded-2xl shadow-sm border border-green-50">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600">

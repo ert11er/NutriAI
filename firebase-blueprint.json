@@ -1,0 +1,31 @@
+{
+  "entities": {
+    "DietPlanRecord": {
+      "title": "DietPlanRecord",
+      "description": "A saved diet plan with user data.",
+      "type": "object",
+      "properties": {
+        "userData": {
+          "type": "object",
+          "description": "The physical characteristics and goals of the user."
+        },
+        "plan": {
+          "type": "object",
+          "description": "The generated diet plan details."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the plan was saved."
+        }
+      },
+      "required": ["userData", "plan", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/plans/{planId}": {
+      "schema": "DietPlanRecord",
+      "description": "Publicly shareable diet plans accessed by a 10-digit ID."
+    }
+  }
+}

@@ -35,9 +35,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.age && formData.weight && formData.height) {
-      onSubmit(formData as UserData);
-    }
+    onSubmit(formData as UserData);
   };
 
   const dietaryOptions = ["Vegan", "Vejetaryen", "Glutensiz", "Laktozsuz", "Ketojenik", "Düşük Karbonhidrat", "Akdeniz Diyeti"];
@@ -55,7 +53,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
             <div>
               <label className="block text-sm font-semibold text-green-700 mb-1">Yaş</label>
               <input 
-                type="number" name="age" required min="1" max="120"
+                type="number" name="age" min="1" max="120"
                 onChange={handleChange}
                 className="w-full px-4 py-2 rounded-xl border border-green-100 focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition"
                 placeholder="25"
@@ -78,7 +76,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
             <div>
               <label className="block text-sm font-semibold text-green-700 mb-1">Kilo (kg)</label>
               <input 
-                type="number" name="weight" required min="20" max="300" step="0.1"
+                type="number" name="weight" min="20" max="300" step="0.1"
                 onChange={handleChange}
                 className="w-full px-4 py-2 rounded-xl border border-green-100 focus:ring-2 focus:ring-green-500 outline-none"
                 placeholder="70"
@@ -87,7 +85,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
             <div>
               <label className="block text-sm font-semibold text-green-700 mb-1">Boy (cm)</label>
               <input 
-                type="number" name="height" required min="100" max="250"
+                type="number" name="height" min="100" max="250"
                 onChange={handleChange}
                 className="w-full px-4 py-2 rounded-xl border border-green-100 focus:ring-2 focus:ring-green-500 outline-none"
                 placeholder="175"

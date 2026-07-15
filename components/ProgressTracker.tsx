@@ -34,7 +34,7 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ weightHistory, setWei
   };
 
   const chartData = weightHistory.map(entry => ({
-    date: entry.date,
+    date: new Date(entry.date), // Convert date string to Date object for better Recharts handling
     weight: entry.weight,
   }));
 
@@ -98,7 +98,10 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ weightHistory, setWei
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e0f2f1" />
-                <XAxis dataKey="date" tickFormatter={(dateStr) => new Date(dateStr).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} />
+                <XAxis 
+                  dataKey="date" 
+                  tickFormatter={(date: Date) => date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} 
+                />
                 <YAxis unit="kg" domain={['auto', 'auto']} />
                 <Tooltip />
                 <Line type="monotone" dataKey="weight" stroke="#10b981" activeDot={{ r: 8 }} />

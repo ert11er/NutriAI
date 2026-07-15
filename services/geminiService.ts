@@ -1,100 +1,118 @@
-
-import { GoogleGenAI, Type } from "@google/genai";
 import { UserData, AIResponse, DietPlan } from "../types";
 
-const MODEL_NAME = "gemini-2.5-flash";
+const mealSchema = {
+  type: "OBJECT",
+  properties: {
+    id: { type: "STRING" },
+    time: { type: "STRING" },
+    dish: { type: "STRING" },
+    description: { type: "STRING" },
+    calories: { type: "INTEGER" },
+    protein: { type: "INTEGER" },
+    carbs: { type: "INTEGER" },
+    fat: { type: "INTEGER" },
+    prepTime: { type: "STRING" },
+    servings: { type: "STRING" },
+    ingredients: {
+      type: "ARRAY",
+      items: { type: "STRING" }
+    },
+    alternatives: {
+      type: "ARRAY",
+      items: { type: "STRING" }
+    }
+  },
+  required: ["id", "time", "dish", "description", "calories", "protein", "carbs", "fat"]
+};
+
+const dayPlanSchema = {
+  type: "OBJECT",
+  properties: {
+    day: { type: "STRING" },
+    meals: {
+      type: "ARRAY",
+      items: mealSchema
+    }
+  },
+  required: ["day", "meals"]
+};
+
+const dietPlanSchema = {
+  type: "OBJECT",
+  properties: {
+    summary: { type: "STRING" },
+    dailyCalories: { type: "INTEGER" },
+    macros: {
+      type: "OBJECT",
+      properties: {
+        protein: { type: "INTEGER" },
+        carbs: { type: "INTEGER" },
+        fat: { type: "INTEGER" }
+      },
+      required: ["protein", "carbs", "fat"]
+    },
+    weeklyPlan: {
+      type: "ARRAY",
+      items: dayPlanSchema
+    },
+    tips: {
+      type: "ARRAY",
+      items: { type: "STRING" }
+    }
+  },
+  required: ["summary", "dailyCalories", "macros", "weeklyPlan", "tips"]
+};
+
+const aiResponseSchema = {
+  type: "OBJECT",
+  properties: {
+    type: {
+      type: "STRING",
+      enum: ["questions", "plan"]
+    },
+    questions: {
+      type: "ARRAY",
+      items: { type: "STRING" }
+    },
+    plan: dietPlanSchema
+  },
+  required: ["type"]
+};
 
 export const analyzeAndAsk = async (userData: UserData): Promise<AIResponse> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
   const prompt = `
     Kullanıcı bir diyet planı istiyor. Verilerini aşağıda görebilirsin. 
     Lütfen bu verileri analiz et veya 2-3 ek soru sor (Örn: Bütçe, mutfak ekipmanı, iş saatleri vb.). Eğer soru soracaksan, "questions" tipinde yanıt ver. 
     Eğer veriler yeterliyse doğrudan "plan" tipinde tam bir diyet planı oluştur.
     
     Kullanıcı Verileri:
-    - Yaş: ${userData.age}, Cinsiyet: ${userData.gender}
-    - Kilo: ${userData.weight}, Boy: ${userData.height}
-    - Hedef: ${userData.goal}, Aktivite: ${userData.activityLevel}
-    - Kısıtlamalar: ${userData.restrictions.join(', ')}
-    - Alerjiler: ${userData.allergies}
-    - Sevilmeyenler: ${userData.dislikedFoods}
-    - Özel İstekler: ${userData.extraNotes}
+    - Yaş: ${userData.age || 'Belirtilmedi'}, Cinsiyet: ${userData.gender || 'Belirtilmedi'}
+    - Kilo: ${userData.weight ? userData.weight + ' kg' : 'Belirtilmedi'}, Boy: ${userData.height ? userData.height + ' cm' : 'Belirtilmedi'}
+    - Hedef: ${userData.goal || 'Belirtilmedi'}, Aktivite: ${userData.activityLevel || 'Belirtilmedi'}
+    - Kısıtlamalar: ${userData.restrictions?.join(', ') || 'Yok'}
+    - Alerjiler: ${userData.allergies || 'Yok'}
+    - Sevilmeyenler: ${userData.dislikedFoods || 'Yok'}
+    - Tıbbi Durumlar: ${userData.medicalConditions || 'Yok'}
+    - Özel İstekler: ${userData.extraNotes || 'Yok'}
     
     Yanıt formatın MUTLAKA JSON olmalı ve "type" alanı ('questions' veya 'plan') içermeli.
   `;
 
-  const response = await ai.models.generateContent({
-    model: MODEL_NAME,
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          type: { type: Type.STRING, enum: ['questions', 'plan'] },
-          questions: { 
-            type: Type.ARRAY, 
-            items: { type: Type.STRING },
-            description: "Eğer tip 'questions' ise sorulacak 2-3 soru" 
-          },
-          plan: { 
-            type: Type.OBJECT,
-            properties: {
-              summary: { type: Type.STRING },
-              dailyCalories: { type: Type.NUMBER },
-              macros: {
-                type: Type.OBJECT,
-                properties: {
-                  protein: { type: Type.NUMBER },
-                  carbs: { type: Type.NUMBER },
-                  fat: { type: Type.NUMBER }
-                }
-              },
-              weeklyPlan: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    day: { type: Type.STRING },
-                    meals: {
-                      type: Type.ARRAY,
-                      items: {
-                        type: Type.OBJECT,
-                        properties: {
-                          id: { type: Type.STRING, description: "Benzersiz öğün ID'si" },
-                          time: { type: Type.STRING },
-                          dish: { type: Type.STRING },
-                          description: { type: Type.STRING },
-                          calories: { type: Type.NUMBER },
-                          protein: { type: Type.NUMBER },
-                          carbs: { type: Type.NUMBER },
-                          fat: { type: Type.NUMBER },
-                          prepTime: { type: Type.STRING, description: "Hazırlık süresi (örn: 20 dakika)" },
-                          servings: { type: Type.STRING, description: "Porsiyon bilgisi (örn: 1 porsiyon)" },
-                          ingredients: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Malzeme listesi" },
-                          alternatives: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Alternatifler" }
-                        }
-                      }
-                    }
-                  }
-                }
-              },
-              tips: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            description: "Eğer tip 'plan' ise tam diyet planı"
-          }
-        },
-        required: ["type"]
-      }
-    }
+  const response = await fetch("/api/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, schema: aiResponseSchema }),
   });
 
-  return JSON.parse(response.text);
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || "Sunucu hatası.");
+  }
+
+  return response.json();
 };
 
 export const generateFinalPlan = async (userData: UserData, answers: Record<string, string>): Promise<DietPlan> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const answersString = Object.entries(answers).map(([q, a]) => `Soru: ${q}\nCevap: ${a}`).join('\n');
   
   const prompt = `
@@ -109,62 +127,24 @@ export const generateFinalPlan = async (userData: UserData, answers: Record<stri
     ${answersString}
     
     Yanıt dili Türkçe olmalı.
+    Plan Şunları İçermeli:
+    1. Günlük Kalori ve Makro (Protein, Karbonhidrat, Yağ) hedefleri.
+    2. 7 günün her biri için öğünler.
+    3. Her öğün için kalori tahmini ve tarif/içerik özeti.
+    
+    Yanıtı SADECE JSON formatında döndür.
   `;
 
-  const response = await ai.models.generateContent({
-    model: MODEL_NAME,
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          summary: { type: Type.STRING },
-          dailyCalories: { type: Type.NUMBER },
-          macros: {
-            type: Type.OBJECT,
-            properties: {
-              protein: { type: Type.NUMBER },
-              carbs: { type: Type.NUMBER },
-              fat: { type: Type.NUMBER }
-            },
-            required: ["protein", "carbs", "fat"]
-          },
-          weeklyPlan: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                day: { type: Type.STRING },
-                meals: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      id: { type: Type.STRING, description: "Benzersiz öğün ID'si" },
-                      time: { type: Type.STRING },
-                      dish: { type: Type.STRING },
-                      description: { type: Type.STRING },
-                      calories: { type: Type.NUMBER },
-                      protein: { type: Type.NUMBER },
-                      carbs: { type: Type.NUMBER },
-                      fat: { type: Type.NUMBER },
-                      prepTime: { type: Type.STRING, description: "Hazırlık süresi (örn: 20 dakika)" },
-                      servings: { type: Type.STRING, description: "Porsiyon bilgisi (örn: 1 porsiyon)" },
-                      ingredients: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Malzeme listesi" },
-                      alternatives: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Alternatifler" }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          tips: { type: Type.ARRAY, items: { type: Type.STRING } }
-        },
-        required: ["summary", "dailyCalories", "macros", "weeklyPlan", "tips"]
-      }
-    }
+  const response = await fetch("/api/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, schema: dietPlanSchema }),
   });
 
-  return JSON.parse(response.text);
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || "Sunucu hatası.");
+  }
+
+  return response.json();
 };

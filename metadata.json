@@ -1,5 +1,6 @@
 {
   "name": "NutriAI - Akıllı Diyet Asistanı",
   "description": "Yapay zeka destekli, kişiselleştirilmiş diyet ve beslenme planı oluşturucu. Fiziksel özelliklerinize ve hedeflerinize göre size özel listeler sunar.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
