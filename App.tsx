@@ -6,8 +6,7 @@ import UserForm from './components/UserForm';
 import DietDashboard from './components/DietDashboard';
 import LoadingState from './components/LoadingState';
 import QuestionStep from './components/QuestionStep';
-import ProgressTracker from './components/ProgressTracker';
-import { UserData, DietPlan, WeightEntry, ExportedDietPlanData } from './types';
+import { UserData, DietPlan, WeightEntry } from './types';
 import { analyzeAndAsk, generateFinalPlan } from './services/geminiService';
 import { getDietPlan } from './services/firebase';
 import { translations } from './src/translations';
@@ -20,7 +19,6 @@ const Home: React.FC = () => {
   const [pendingQuestions, setPendingQuestions] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showProgressTracker, setShowProgressTracker] = useState(false);
   const [inputPlanId, setInputPlanId] = useState('');
 
   const [lang, setLang] = useState<'tr' | 'en'>(() => (localStorage.getItem('lang') as 'tr' | 'en') || 'tr');
@@ -62,7 +60,6 @@ const Home: React.FC = () => {
           if (result) {
             setUserData(result.userData);
             setDietPlan(result.plan);
-            setShowProgressTracker(false);
           } else {
             setError(t('notFound'));
           }
@@ -89,7 +86,6 @@ const Home: React.FC = () => {
   // Tam sıfırlama (Logo veya Yeni Plan tıklandığında)
   const handleFullReset = () => {
     clearDietFlow();
-    setShowProgressTracker(false);
   };
 
   const handleGetPlanById = () => {
@@ -102,7 +98,6 @@ const Home: React.FC = () => {
     setLoading(true);
     setError(null);
     setUserData(data);
-    setShowProgressTracker(false);
     try {
       const result = await analyzeAndAsk(data);
       if (result.type === 'questions' && result.questions) {
@@ -131,74 +126,15 @@ const Home: React.FC = () => {
     }
   };
 
-  const toggleProgressTracker = () => {
-    const isOpening = !showProgressTracker;
-    setShowProgressTracker(isOpening);
-    if (isOpening) {
-      // Takip ekranı açılırken diyet formunu/dashboard'u gizle
-      clearDietFlow();
-    }
-  };
-
-  const handleImportPlan = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/json';
-    input.onchange = async (event: Event) => {
-      const target = event.target as HTMLInputElement;
-      if (target.files && target.files.length > 0) {
-        const file = target.files[0];
-        setLoading(true);
-        setError(null);
-        handleFullReset();
-
-        try {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            try {
-              const content = e.target?.result as string;
-              const importedData: ExportedDietPlanData = JSON.parse(content);
-              if (importedData.userData && importedData.plan) {
-                setUserData(importedData.userData);
-                setDietPlan(importedData.plan);
-                setShowProgressTracker(false);
-              } else {
-                setError(t('notFound'));
-              }
-            } catch (pErr) {
-              setError(t('loadError'));
-            } finally {
-              setLoading(false);
-            }
-          };
-          reader.readAsText(file);
-        } catch (fErr) {
-          setError(t('loadError'));
-          setLoading(false);
-        }
-      }
-    };
-    input.click();
-  };
-
   return (
     <div className="min-h-screen flex flex-col">
       <Header 
         onReset={handleFullReset} 
-        onToggleProgressTracker={toggleProgressTracker} 
-        onImportPlan={handleImportPlan} 
       />
       
       <main className="flex-grow container mx-auto px-4 py-8">
-        {/* İlerleme Takibi Aktifse Sadece Onu Göster */}
-        {showProgressTracker ? (
-          <ProgressTracker 
-            weightHistory={weightHistory} 
-            setWeightHistory={setWeightHistory} 
-          />
-        ) : (
-          <>
-            {/* Form Görünümü: Hiçbir veri yoksa ve yükleme yapılmıyorsa */}
+        <>
+          {/* Form Görünümü: Hiçbir veri yoksa ve yükleme yapılmıyorsa */}
             {!userData && !loading && !dietPlan && !pendingQuestions && (
               <div className="max-w-4xl mx-auto">
                 <div className="text-center mb-10">
@@ -265,7 +201,6 @@ const Home: React.FC = () => {
               />
             )}
           </>
-        )}
       </main>
 
       <footer className="py-6 text-center text-green-600 text-sm border-t border-green-100 mt-auto no-print">
