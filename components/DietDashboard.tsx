@@ -5,6 +5,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis
 import { saveDietPlan, updateDietPlan } from '../services/firebase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { translations } from '../src/translations';
 
 interface DietDashboardProps {
   plan: DietPlan;
@@ -16,6 +17,33 @@ interface DietDashboardProps {
 }
 
 const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, weightHistory, planId, onUpdatePlan }) => {
+  const [lang, setLang] = useState<'tr' | 'en'>(() => (localStorage.getItem('lang') as 'tr' | 'en') || 'tr');
+  const t = (key: keyof typeof translations.tr) => translations[lang][key];
+
+  const translateDay = (dayStr: string) => {
+    if (!dayStr) return '';
+    const cleanDay = dayStr.trim();
+    const translation = (translations[lang] as any)[cleanDay];
+    if (translation) {
+      return translation;
+    }
+    if (cleanDay.toLowerCase().includes('gün')) {
+      const match = cleanDay.match(/\d+/);
+      if (match) {
+        return lang === 'en' ? `Day ${match[0]}` : `${match[0]}. Gün`;
+      }
+    }
+    return cleanDay;
+  };
+
+  useEffect(() => {
+    const handleLanguageChange = () => {
+      setLang((localStorage.getItem('lang') as 'tr' | 'en') || 'tr');
+    };
+    window.addEventListener('languageChange', handleLanguageChange);
+    return () => window.removeEventListener('languageChange', handleLanguageChange);
+  }, []);
+
   const [activeDay, setActiveDay] = useState(0);
   const [expandedMeals, setExpandedMeals] = useState<Set<string>>(new Set());
   const [favoriteMeals, setFavoriteMeals] = useState<Set<string>>(new Set());
@@ -357,12 +385,16 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
 
   const macroData = calculateMacroPercentages();
   const barData = [
-    { name: 'Protein', grams: plan.macros?.protein || 0, fill: '#10b981' },
-    { name: 'Carbs', grams: plan.macros?.carbs || 0, fill: '#3b82f6' },
-    { name: 'Fat', grams: plan.macros?.fat || 0, fill: '#f59e0b' },
+    { name: t('protein'), grams: plan.macros?.protein || 0, fill: '#10b981' },
+    { name: t('carbs'), grams: plan.macros?.carbs || 0, fill: '#3b82f6' },
+    { name: t('fat'), grams: plan.macros?.fat || 0, fill: '#f59e0b' },
   ];
   const weeklyPlan = plan.weeklyPlan || [];
-  const currentDay = weeklyPlan[activeDay] || { day: `Gün ${activeDay + 1}`, meals: [] };
+  const rawCurrentDay = weeklyPlan[activeDay] || { day: '', meals: [] };
+  const currentDay = {
+    ...rawCurrentDay,
+    day: translateDay(rawCurrentDay.day) || (lang === 'en' ? `Day ${activeDay + 1}` : `${activeDay + 1}. Gün`)
+  };
   const currentMeals = currentDay.meals || [];
   const totalDayCalories = currentMeals.reduce((sum, m) => sum + (Number(m.calories) || 0), 0);
 
@@ -495,23 +527,23 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700" ref={dashboardRef}>
-       {/* Dedicated Print-Friendly Structure (Only visible when printing or for PDF capture) */}
+       
        <div id="print-friendly-plan" className="absolute -left-[9999px] top-0 w-[210mm] bg-white p-8 print:static print:block print:w-full print:bg-white">
-         <h1 className="text-4xl font-black text-emerald-950 mb-6">NutriAI Diyet Planınız</h1>
+         <h1 className="text-4xl font-black text-emerald-950 mb-6">{t('printPlan')}</h1>
          <div className="mb-8 p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
-           <h2 className="text-xl font-bold mb-2 text-emerald-900">Genel Özeti</h2>
+           <h2 className="text-xl font-bold mb-2 text-emerald-900">{t('summary')}</h2>
            <p className="text-emerald-800 leading-relaxed">{plan.summary}</p>
            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm font-bold">
-             <p className="text-emerald-900">Günlük Kalori: {plan.dailyCalories} kcal</p>
-             <p className="text-emerald-900">Protein: {plan.macros?.protein} g</p>
-             <p className="text-emerald-900">Karbonhidrat: {plan.macros?.carbs} g</p>
-             <p className="text-emerald-900">Yağ: {plan.macros?.fat} g</p>
+             <p className="text-emerald-900">{t('dailyCalories')}: {plan.dailyCalories} kcal</p>
+             <p className="text-emerald-900">{t('protein')}: {plan.macros?.protein} g</p>
+             <p className="text-emerald-900">{t('carbs')}: {plan.macros?.carbs} g</p>
+             <p className="text-emerald-900">{t('fat')}: {plan.macros?.fat} g</p>
            </div>
          </div>
          <div className="space-y-8">
            {(plan.weeklyPlan || []).map((day, dIdx) => (
              <div key={dIdx} className="break-inside-avoid border-b pb-6">
-               <h2 className="text-2xl font-black text-emerald-900 mb-4">{day.day}</h2>
+               <h2 className="text-2xl font-black text-emerald-900 mb-4">{translateDay(day.day)}</h2>
                <div className="grid grid-cols-2 gap-4">
                   {day.meals.map((meal, mIdx) => (
                     <div key={mIdx} className="border p-4 rounded-xl bg-gray-50">
@@ -533,7 +565,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
               <div className="mb-6 p-3 bg-emerald-50/50 border border-emerald-100 rounded-2xl flex items-center justify-between gap-3 text-xs text-emerald-800 animate-in fade-in duration-300 no-print">
                 <div className="flex items-center gap-2 truncate">
                   <i className="fas fa-link text-emerald-600 shrink-0"></i>
-                  <span className="font-bold shrink-0 text-emerald-700">Paylaşım Linki:</span>
+                  <span className="font-bold shrink-0 text-emerald-700">{t('shareLink')}</span>
                   <span className="font-mono text-emerald-900 truncate select-all">{window.location.origin}/ID/{sharedId}</span>
                 </div>
                 <button 
@@ -541,35 +573,39 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shrink-0 flex items-center gap-1.5 active:scale-95 text-[11px]"
                 >
                   <i className="fas fa-copy"></i>
-                  {copySuccess ? 'Kopyalandı' : 'Kopyala'}
+                  {copySuccess ? t('copied') : t('copy')}
                 </button>
               </div>
             ) : (
               <div className="mb-6 p-3 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-between gap-3 text-xs text-gray-500 animate-in fade-in duration-300 no-print">
                 <div className="flex items-center gap-2">
                   <i className="fas fa-spinner fa-spin text-emerald-600"></i>
-                  <span>Paylaşım linki oluşturuluyor...</span>
+                  <span>{t('generatingShareLink')}</span>
                 </div>
               </div>
             )}
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-3xl font-extrabold text-green-950 tracking-tight">Plan Özetiniz</h2>
-              <button 
-                onClick={handleEditGeneralClick}
-                className="px-4 py-2 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-all flex items-center gap-1.5 no-print animate-in fade-in duration-300"
-              >
-                <i className="fas fa-edit text-[10px]"></i> Hedefleri Düzenle
-              </button>
-            </div>
+            <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-extrabold text-green-950 tracking-tight">{t('planSummary')}</h2>
+          <div className="flex gap-2 no-print">
+            <button onClick={() => setLang('tr')} className={`px-2 py-1 text-xs font-bold rounded ${lang === 'tr' ? 'bg-emerald-600 text-white' : 'bg-gray-200'}`}>TR</button>
+            <button onClick={() => setLang('en')} className={`px-2 py-1 text-xs font-bold rounded ${lang === 'en' ? 'bg-emerald-600 text-white' : 'bg-gray-200'}`}>EN</button>
+          </div>
+          <button 
+            onClick={handleEditGeneralClick}
+            className="px-4 py-2 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-all flex items-center gap-1.5 no-print animate-in fade-in duration-300"
+          >
+            <i className="fas fa-edit text-[10px]"></i> {t('editGoals')}
+          </button>
+        </div>
             <p className="text-green-800/80 leading-relaxed font-medium mb-8">{plan.summary}</p>
             
             <div className="flex flex-wrap gap-4">
               <div className="bg-emerald-50/50 px-6 py-4 rounded-2xl border border-emerald-100 flex flex-col min-w-[140px]">
-                <span className="text-[10px] text-emerald-600 font-extrabold uppercase tracking-widest mb-1">Günlük Kalori</span>
+                <span className="text-[10px] text-emerald-600 font-extrabold uppercase tracking-widest mb-1">{t('dailyCalories')}</span>
                 <span className="text-2xl font-black text-emerald-900">{plan.dailyCalories} kcal</span>
               </div>
               <div className="bg-blue-50/50 px-6 py-4 rounded-2xl border border-blue-100 flex flex-col min-w-[140px]">
-                <span className="text-[10px] text-blue-600 font-extrabold uppercase tracking-widest mb-1">Bazal Metabolizma</span>
+                <span className="text-[10px] text-blue-600 font-extrabold uppercase tracking-widest mb-1">{t('basalMetabolism')}</span>
                 <span className="text-2xl font-black text-blue-900">~{bmr} kcal</span>
               </div>
             </div>
@@ -603,7 +639,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   <XAxis dataKey="name" fontSize={10} />
                   <YAxis fontSize={10} />
                   <Tooltip />
-                  <Bar dataKey="grams" name="Gram" />
+                  <Bar dataKey="grams" name={lang === 'tr' ? 'Gram' : 'Grams'} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -616,7 +652,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
           </div>
         </div>
         <div className="bg-[#064e3b] text-white p-8 rounded-[2rem] shadow-xl shadow-green-900/10">
-          <h3 className="text-2xl font-black mb-6 flex items-center gap-3"><i className="fas fa-lightbulb text-amber-400"></i> Tavsiyeler</h3>
+          <h3 className="text-2xl font-black mb-6 flex items-center gap-3"><i className="fas fa-lightbulb text-amber-400"></i> {t('recommendations')}</h3>
           <ul className="space-y-4">
             {(plan.tips || []).slice(0, 5).map((tip, i) => (
               <li key={i} className="flex gap-4 text-sm font-medium text-emerald-50/90 leading-snug">
@@ -629,7 +665,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
       </div>
       {allFavoriteMeals.length > 0 && (
         <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-green-50 animate-in fade-in duration-500">
-          <h3 className="text-2xl font-black text-emerald-950 mb-6 flex items-center gap-3"><i className="fas fa-star text-yellow-500"></i> Favori Öğünleriniz</h3>
+          <h3 className="text-2xl font-black text-emerald-950 mb-6 flex items-center gap-3"><i className="fas fa-star text-yellow-500"></i> {t('favoriteMeals')}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {allFavoriteMeals.map(meal => (
                <div key={meal.id} className="bg-yellow-50/30 p-6 rounded-2xl border border-yellow-100 relative">
@@ -649,58 +685,58 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
         <div className="flex overflow-x-auto p-5 gap-3 border-b border-green-50 scrollbar-hide no-print">
           {(plan.weeklyPlan || []).map((day, idx) => (
             <button key={idx} onClick={() => setActiveDay(idx)} className={`px-8 py-3.5 rounded-2xl font-bold whitespace-nowrap transition-all duration-300 ${activeDay === idx ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200 ring-4 ring-emerald-500/10 scale-105' : 'text-emerald-700 hover:bg-emerald-50'}`} aria-current={activeDay === idx ? 'page' : undefined}>
-              {day.day}
+              {translateDay(day.day)}
             </button>
           ))}
         </div>
 
         <div className="p-8 md:p-12">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-10 gap-4">
-            <h3 className="text-3xl font-black text-emerald-950">{currentDay.day || `Gün ${activeDay + 1}`} Menüsü</h3>
+            <h3 className="text-3xl font-black text-emerald-950">{lang === 'tr' ? `${currentDay.day || `${activeDay + 1}. Gün`} Menüsü` : `${currentDay.day || `Day ${activeDay + 1}`} Menu`}</h3>
             <div className="flex flex-wrap gap-3 items-center">
               <span className="bg-emerald-100/80 text-emerald-800 px-6 py-2.5 rounded-2xl text-sm font-black border border-emerald-200 dashed border-dashed">
-                {totalDayCalories} Toplam Kalori
+                {lang === 'tr' ? `${totalDayCalories} Toplam Kalori` : `${totalDayCalories} Total Calories`}
               </span>
               <div ref={downloadMenuRef} className="relative inline-block text-left no-print">
                 <button onClick={() => setShowDownloadOptions(prev => !prev)} type="button" className="inline-flex justify-center items-center w-full rounded-2xl border border-gray-200 shadow-sm px-4 py-3 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
-                  <i className="fas fa-download mr-2"></i> İndir
+                  <i className="fas fa-download mr-2"></i> {t('download')}
                   <i className="fas fa-chevron-down -mr-1 ml-2 h-5 w-5 text-xs"></i>
                 </button>
                 {showDownloadOptions && (
                   <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
                     <div className="py-1">
                       <button onClick={() => { handleDownloadPDF(); setShowDownloadOptions(false); }} disabled={isGeneratingPdf} className="text-gray-700 disabled:opacity-50 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
-                        {isGeneratingPdf ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-file-pdf mr-2 text-red-500"></i>} Plan (PDF)
+                        {isGeneratingPdf ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-file-pdf mr-2 text-red-500"></i>} {t('planPdf')}
                       </button>
                       <button onClick={() => { handleDownloadPlanTxt(); setShowDownloadOptions(false); }} className="text-gray-700 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
-                        <i className="fas fa-file-alt mr-2 text-blue-500"></i> Plan (Metin)
+                        <i className="fas fa-file-alt mr-2 text-blue-500"></i> {t('planText')}
                       </button>
                       <button onClick={() => { handleDownloadPlanJson(); setShowDownloadOptions(false); }} className="text-gray-700 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
-                        <i className="fas fa-file-code mr-2 text-purple-500"></i> Plan (JSON)
+                        <i className="fas fa-file-code mr-2 text-purple-500"></i> {t('planJson')}
                       </button>
                        <button onClick={() => { handleDownloadShoppingList(); setShowDownloadOptions(false); }} className="text-gray-700 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 border-t mt-1 pt-1">
-                        <i className="fas fa-shopping-basket mr-2 text-orange-500"></i> Alışveriş Listesi
+                        <i className="fas fa-shopping-basket mr-2 text-orange-500"></i> {t('shoppingList')}
                       </button>
                     </div>
                   </div>
                 )}
               </div>
-              <button onClick={() => setShowShoppingList(true)} className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-2xl shadow-lg shadow-blue-100 transition-all active:scale-95 no-print" title="Alışveriş Listesini Görüntüle">
+              <button onClick={() => setShowShoppingList(true)} className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-2xl shadow-lg shadow-blue-100 transition-all active:scale-95 no-print" title={lang === 'tr' ? 'Alışveriş Listesini Görüntüle' : 'View Shopping List'}>
                 <i className="fas fa-shopping-basket"></i>
               </button>
               <button 
                 onClick={handleDownloadPDF} 
                 className="flex items-center gap-2 px-6 py-3 rounded-2xl shadow-lg transition-all active:scale-95 no-print font-bold bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
-                title="Planı Yazdır (PDF)"
+                title={lang === 'tr' ? 'Planı Yazdır (PDF)' : 'Print Plan (PDF)'}
               >
                 <i className="fas fa-print"></i>
-                Yazdır
+                {lang === 'tr' ? 'Yazdır' : 'Print'}
               </button>
               <button 
                 onClick={handleShare} 
                 disabled={isSharing}
                 className={`flex items-center gap-2 px-6 py-3 rounded-2xl shadow-lg transition-all active:scale-95 no-print font-bold ${sharedId ? 'bg-green-600 hover:bg-green-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white disabled:opacity-50`}
-                title="Planı Paylaş"
+                title={lang === 'tr' ? 'Planı Paylaş' : 'Share Plan'}
               >
                 {isSharing ? (
                   <i className="fas fa-spinner fa-spin"></i>
@@ -709,7 +745,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                 ) : (
                   <i className="fas fa-share-alt"></i>
                 )}
-                {copySuccess ? 'Kopyalandı!' : sharedId ? 'Linki Kopyala' : 'Planı Paylaş'}
+                {copySuccess ? t('copied') : sharedId ? t('copyLink') : t('share')}
               </button>
             </div>
             
@@ -721,7 +757,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                     <i className="fas fa-link"></i>
                   </div>
                   <div>
-                    <p className="text-xs text-emerald-600 font-medium uppercase tracking-wider">Plan Erişim Linkiniz</p>
+                    <p className="text-xs text-emerald-600 font-medium uppercase tracking-wider">{lang === 'tr' ? 'Plan Erişim Linkiniz' : 'Your Plan Access Link'}</p>
                     <p className="text-sm font-mono text-emerald-800 break-all">{window.location.origin}/ID/{sharedId}</p>
                   </div>
                 </div>
@@ -729,7 +765,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   onClick={() => copyToClipboard(`${window.location.origin}/ID/${sharedId}`)}
                   className="px-4 py-2 bg-white text-emerald-600 border border-emerald-200 rounded-xl text-sm font-bold hover:bg-emerald-50 transition-colors shrink-0"
                 >
-                  {copySuccess ? 'Kopyalandı' : 'Kopyala'}
+                  {copySuccess ? t('copied') : t('copy')}
                 </button>
               </div>
             )}
@@ -748,7 +784,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                       <span className="text-2xl font-black text-emerald-900 leading-none">{meal.calories}</span>
                       <span className="text-[10px] block font-bold text-emerald-400 uppercase tracking-tighter">kcal</span>
                     </div>
-                    <button onClick={() => toggleFavoriteMeal(meal.id)} className={`text-xl transition ${favoriteMeals.has(meal.id) ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}`} aria-label={favoriteMeals.has(meal.id) ? 'Favorilerden Kaldır' : 'Favorilere Ekle'}>
+                    <button onClick={() => toggleFavoriteMeal(meal.id)} className={`text-xl transition ${favoriteMeals.has(meal.id) ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}`} aria-label={favoriteMeals.has(meal.id) ? (lang === 'tr' ? 'Favorilerden Kaldır' : 'Remove from Favorites') : (lang === 'tr' ? 'Favorilere Ekle' : 'Add to Favorites')}>
                       <i className={`fas fa-star ${favoriteMeals.has(meal.id) ? 'fa-solid' : 'fa-regular'}`}></i>
                     </button>
                   </div>
@@ -757,28 +793,28 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                 <div className="mt-6 border-t border-emerald-100/50 pt-6 flex items-center justify-between no-print">
                   {(meal.prepTime || meal.servings || meal.ingredients?.length || meal.alternatives?.length) ? (
                     <button onClick={() => toggleExpandMeal(meal.id)} className="text-emerald-600 font-bold flex items-center gap-2 hover:text-emerald-800 transition" aria-expanded={expandedMeals.has(meal.id)} aria-controls={`recipe-details-${meal.id}`}>
-                      Tarif Detayları <i className={`fas fa-chevron-${expandedMeals.has(meal.id) ? 'up' : 'down'} text-xs`}></i>
+                      {lang === 'tr' ? 'Tarif Detayları' : 'Recipe Details'} <i className={`fas fa-chevron-${expandedMeals.has(meal.id) ? 'up' : 'down'} text-xs`}></i>
                     </button>
                   ) : (
-                    <span className="text-xs text-emerald-600/40 font-bold">Tarif bilgisi yok</span>
+                    <span className="text-xs text-emerald-600/40 font-bold">{lang === 'tr' ? 'Tarif bilgisi yok' : 'No recipe details'}</span>
                   )}
                   <button 
                     onClick={() => handleEditMealClick(meal)} 
                     className="text-amber-600 hover:text-amber-800 font-bold flex items-center gap-1.5 transition"
                   >
-                    <i className="fas fa-edit text-xs"></i> Düzenle
+                    <i className="fas fa-edit text-xs"></i> {lang === 'tr' ? 'Düzenle' : 'Edit'}
                   </button>
                 </div>
                 {expandedMeals.has(meal.id) && (meal.prepTime || meal.servings || meal.ingredients?.length || meal.alternatives?.length) && (
                   <div id={`recipe-details-${meal.id}`} className="mt-4 space-y-3 text-sm text-emerald-800 animate-in fade-in slide-in-from-top-2 duration-300">
-                    {meal.prepTime && <p><strong>Hazırlık Süresi:</strong> {meal.prepTime}</p>}
-                    {meal.servings && <p><strong>Porsiyon:</strong> {meal.servings}</p>}
-                    {meal.ingredients?.length && <div><p className="font-bold mb-1">Malzemeler:</p><ul className="list-disc list-inside pl-2 space-y-0.5">{meal.ingredients.map((ing, idx) => <li key={idx}>{ing}</li>)}</ul></div>}
-                    {meal.alternatives?.length && <div><p className="font-bold mb-1">Alternatifler:</p><ul className="list-disc list-inside pl-2 space-y-0.5">{meal.alternatives.map((alt, idx) => <li key={idx}>{alt}</li>)}</ul></div>}
+                    {meal.prepTime && <p><strong>{lang === 'tr' ? 'Hazırlık Süresi:' : 'Prep Time:'}</strong> {meal.prepTime}</p>}
+                    {meal.servings && <p><strong>{lang === 'tr' ? 'Porsiyon:' : 'Servings:'}</strong> {meal.servings}</p>}
+                    {meal.ingredients?.length && <div><p className="font-bold mb-1">{lang === 'tr' ? 'Malzemeler:' : 'Ingredients:'}</p><ul className="list-disc list-inside pl-2 space-y-0.5">{meal.ingredients.map((ing, idx) => <li key={idx}>{ing}</li>)}</ul></div>}
+                    {meal.alternatives?.length && <div><p className="font-bold mb-1">{lang === 'tr' ? 'Alternatifler:' : 'Alternatives:'}</p><ul className="list-disc list-inside pl-2 space-y-0.5">{meal.alternatives.map((alt, idx) => <li key={idx}>{alt}</li>)}</ul></div>}
                     <div className="mt-4 pt-4 border-t border-emerald-100 flex items-center gap-3">
-                      <span className="text-xs font-bold text-emerald-600">Tarifi İndir:</span>
-                      <button onClick={() => handleDownloadRecipeTxt(meal)} className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-lg hover:bg-blue-200 transition" title="Metin olarak indir"><i className="fas fa-file-alt mr-1"></i> TXT</button>
-                      <button onClick={() => handleDownloadRecipeJson(meal)} className="px-3 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-lg hover:bg-purple-200 transition" title="JSON olarak indir"><i className="fas fa-file-code mr-1"></i> JSON</button>
+                      <span className="text-xs font-bold text-emerald-600">{lang === 'tr' ? 'Tarifi İndir:' : 'Download Recipe:'}</span>
+                      <button onClick={() => handleDownloadRecipeTxt(meal)} className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-lg hover:bg-blue-200 transition" title={lang === 'tr' ? 'Metin olarak indir' : 'Download as TXT'}><i className="fas fa-file-alt mr-1"></i> TXT</button>
+                      <button onClick={() => handleDownloadRecipeJson(meal)} className="px-3 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-lg hover:bg-purple-200 transition" title={lang === 'tr' ? 'JSON olarak indir' : 'Download as JSON'}><i className="fas fa-file-code mr-1"></i> JSON</button>
                     </div>
                   </div>
                 )}
@@ -794,13 +830,13 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
       </div>
 
       <div className="flex flex-col items-center gap-4 pb-12 no-print">
-        <button onClick={onReset} className="flex items-center gap-2 text-emerald-600 font-extrabold hover:text-emerald-800 transition-all hover:scale-105"><i className="fas fa-redo"></i> Bilgileri Güncelle ve Yeniden Oluştur</button>
+        <button onClick={onReset} className="flex items-center gap-2 text-emerald-600 font-extrabold hover:text-emerald-800 transition-all hover:scale-105"><i className="fas fa-redo"></i> {lang === 'tr' ? 'Bilgileri Güncelle ve Yeniden Oluştur' : 'Update Info & Regenerate'}</button>
       </div>
 
       {showShoppingList && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animate-in fade-in duration-300 no-print" onClick={() => setShowShoppingList(false)}>
           <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto relative" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="shopping-list-title">
-            <h3 id="shopping-list-title" className="text-2xl font-bold text-emerald-950 mb-6 flex items-center gap-3"><i className="fas fa-shopping-basket text-blue-500"></i> Alışveriş Listesi</h3>
+            <h3 id="shopping-list-title" className="text-2xl font-bold text-emerald-950 mb-6 flex items-center gap-3"><i className="fas fa-shopping-basket text-blue-500"></i> {t('shoppingList')}</h3>
             <ul className="space-y-2 text-emerald-800">
               {shoppingList.map((item, index) => (
                 <li key={index} className="flex items-start">
@@ -810,8 +846,8 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
               ))}
             </ul>
             <div className="mt-8 flex justify-end gap-3">
-              <button onClick={() => setShowShoppingList(false)} className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition">Kapat</button>
-              <button onClick={() => { handleDownloadShoppingList(); setShowShoppingList(false);}} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition">Listeyi İndir</button>
+              <button onClick={() => setShowShoppingList(false)} className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition">{t('close')}</button>
+              <button onClick={() => { handleDownloadShoppingList(); setShowShoppingList(false);}} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition">{lang === 'tr' ? 'Listeyi İndir' : 'Download List'}</button>
             </div>
           </div>
         </div>
@@ -824,25 +860,25 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
             <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-600 mb-6 mx-auto">
               <i className="fas fa-exclamation-triangle text-2xl"></i>
             </div>
-            <h3 className="text-xl font-extrabold text-amber-950 mb-3 text-center">⚠️ Profesyonel Diyetisyen Uyarısı</h3>
+            <h3 className="text-xl font-extrabold text-amber-950 mb-3 text-center">⚠️ {lang === 'tr' ? 'Profesyonel Diyetisyen Uyarısı' : 'Professional Dietitian Warning'}</h3>
             <p className="text-sm text-amber-900/80 leading-relaxed mb-6 text-center font-semibold">
-              Bu düzenleme paneli ve diyet planı değişiklik özellikleri yalnızca profesyonel diyetisyenler ve beslenme uzmanları tarafından kullanılmalıdır.
+              {lang === 'tr' ? 'Bu düzenleme paneli ve diyet planı değişiklik özellikleri yalnızca profesyonel diyetisyenler ve beslenme uzmanları tarafından kullanılmalıdır.' : 'This editing panel and diet plan modification features must only be used by professional dietitians and nutritionists.'}
             </p>
             <p className="text-xs text-amber-800/70 leading-relaxed mb-8 text-center bg-amber-50/50 p-4 rounded-2xl border border-amber-100">
-              Diyetisyen gözetimi veya onayı olmadan diyet üzerinde yapılacak bilinçsiz değişiklikler, kalori/makro dengesizlikleri yaratarak sağlık riskleri oluşturabilir. Bu aracı uzman gözetiminde kullandığınızı onaylıyor musunuz?
+              {t('warningTextSecondary')}
             </p>
             <div className="flex gap-3">
               <button 
                 onClick={() => { setShowWarningModal(false); setPendingEditMeal(null); setPendingGeneralEdit(false); }}
                 className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-all text-sm"
               >
-                Vazgeç
+                {lang === 'tr' ? 'Vazgeç' : 'Cancel'}
               </button>
               <button 
                 onClick={handleConfirmWarning}
                 className="flex-1 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-amber-200 text-sm"
               >
-                Evet, Onaylıyorum
+                {lang === 'tr' ? 'Evet, Onaylıyorum' : 'Yes, I Confirm'}
               </button>
             </div>
           </div>
@@ -856,8 +892,8 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
             {/* Header */}
             <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <span className="text-xs font-black text-amber-600 uppercase tracking-widest block mb-1">Diyetisyen Düzenleme Paneli</span>
-                <h3 className="text-2xl font-black text-emerald-950">Öğünü Düzenle</h3>
+                <span className="text-xs font-black text-amber-600 uppercase tracking-widest block mb-1">{t('dietitianPanel')}</span>
+                <h3 className="text-2xl font-black text-emerald-950">{t('editMealTitle')}</h3>
               </div>
               <button onClick={() => { setEditingMeal(null); setFormMeal(null); }} className="w-10 h-10 rounded-full bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-colors">
                 <i className="fas fa-times"></i>
@@ -868,7 +904,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
             <form onSubmit={handleSaveMeal} className="flex-1 overflow-y-auto p-8 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-bold text-emerald-900 mb-1.5">Yemek / Tarif Adı</label>
+                  <label className="block text-sm font-bold text-emerald-900 mb-1.5">{t('dishName')}</label>
                   <input 
                     type="text" 
                     required
@@ -878,7 +914,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-emerald-900 mb-1.5">Öğün Zamanı / Saati</label>
+                  <label className="block text-sm font-bold text-emerald-900 mb-1.5">{t('mealTime')}</label>
                   <input 
                     type="text" 
                     required
@@ -890,7 +926,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-emerald-900 mb-1.5">Açıklama / Hazırlanış Özeti</label>
+                <label className="block text-sm font-bold text-emerald-900 mb-1.5">{t('descriptionLabel')}</label>
                 <textarea 
                   required
                   rows={3}
@@ -903,7 +939,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
               {/* Nutrients Row */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-5 bg-emerald-50/50 rounded-2xl border border-emerald-100/50">
                 <div>
-                  <label className="block text-[10px] font-black text-emerald-600 uppercase tracking-wider mb-1">Kalori (kcal)</label>
+                  <label className="block text-[10px] font-black text-emerald-600 uppercase tracking-wider mb-1">{t('caloriesUnit')}</label>
                   <input 
                     type="number" 
                     required
@@ -914,7 +950,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-emerald-600 uppercase tracking-wider mb-1">Protein (g)</label>
+                  <label className="block text-[10px] font-black text-emerald-600 uppercase tracking-wider mb-1">{t('proteinUnit')}</label>
                   <input 
                     type="number" 
                     required
@@ -925,7 +961,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-blue-600 uppercase tracking-wider mb-1">Karbonhidrat (g)</label>
+                  <label className="block text-[10px] font-black text-blue-600 uppercase tracking-wider mb-1">{t('carbsUnit')}</label>
                   <input 
                     type="number" 
                     required
@@ -936,7 +972,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-amber-600 uppercase tracking-wider mb-1">Yağ (g)</label>
+                  <label className="block text-[10px] font-black text-amber-600 uppercase tracking-wider mb-1">{t('fatUnit')}</label>
                   <input 
                     type="number" 
                     required
@@ -950,7 +986,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-bold text-emerald-900 mb-1.5">Hazırlık Süresi (Örn: 15 dk)</label>
+                  <label className="block text-sm font-bold text-emerald-900 mb-1.5">{t('prepTimeLabel')}</label>
                   <input 
                     type="text" 
                     value={formMeal.prepTime || ''}
@@ -960,7 +996,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-emerald-900 mb-1.5">Porsiyon (Örn: 1 porsiyon)</label>
+                  <label className="block text-sm font-bold text-emerald-900 mb-1.5">{t('servingsLabel')}</label>
                   <input 
                     type="text" 
                     value={formMeal.servings || ''}
@@ -972,26 +1008,26 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-emerald-900 mb-1">Malzemeler (Her satıra bir tane)</label>
-                <span className="text-[10px] text-gray-400 block mb-1.5">Malzemeleri alt alta yazın</span>
+                <label className="block text-sm font-bold text-emerald-900 mb-1">{lang === 'tr' ? 'Malzemeler (Her satıra bir tane)' : 'Ingredients (One per line)'}</label>
+                <span className="text-[10px] text-gray-400 block mb-1.5">{t('ingredientsLineHelp')}</span>
                 <textarea 
                   rows={4}
                   value={(formMeal.ingredients || []).join('\n')}
                   onChange={(e) => setFormMeal({ ...formMeal, ingredients: e.target.value.split('\n') })}
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-semibold font-mono text-sm text-emerald-950"
-                  placeholder="Örn: 2 adet yumurta&#10;1 dilim süzme peynir"
+                  placeholder={t('ingredientsPlaceholder')}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-emerald-900 mb-1">Alternatifler (Her satıra bir tane)</label>
-                <span className="text-[10px] text-gray-400 block mb-1.5">Alternatifleri alt alta yazın</span>
+                <label className="block text-sm font-bold text-emerald-900 mb-1">{lang === 'tr' ? 'Alternatifler (Her satıra bir tane)' : 'Alternatives (One per line)'}</label>
+                <span className="text-[10px] text-gray-400 block mb-1.5">{t('alternativesLineHelp')}</span>
                 <textarea 
                   rows={3}
                   value={(formMeal.alternatives || []).join('\n')}
                   onChange={(e) => setFormMeal({ ...formMeal, alternatives: e.target.value.split('\n') })}
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-semibold font-mono text-sm text-emerald-950"
-                  placeholder="Örn: 1 kase yulaf ezmesi&#10;3 adet ceviz içi"
+                  placeholder={t('alternativesPlaceholder')}
                 />
               </div>
 
@@ -1002,13 +1038,13 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   onClick={() => { setEditingMeal(null); setFormMeal(null); }}
                   className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-all text-sm"
                 >
-                  Kapat
+                  {t('close')}
                 </button>
                 <button 
                   type="submit"
                   className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-200 text-sm"
                 >
-                  Kaydet
+                  {t('save')}
                 </button>
               </div>
             </form>
@@ -1021,10 +1057,10 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 no-print" onClick={() => { setIsEditingGeneral(false); setFormGeneral(null); }}>
           <div className="bg-white rounded-[2rem] max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <span className="text-xs font-black text-amber-600 uppercase tracking-widest block mb-1">Diyetisyen Düzenleme Paneli</span>
-                <h3 className="text-2xl font-black text-emerald-950">Genel Hedefleri Düzenle</h3>
-              </div>
+               <div>
+                 <span className="text-xs font-black text-amber-600 uppercase tracking-widest block mb-1">{t('dietitianPanel')}</span>
+                 <h3 className="text-2xl font-black text-emerald-950">{t('editGoalsTitle')}</h3>
+               </div>
               <button onClick={() => { setIsEditingGeneral(false); setFormGeneral(null); }} className="w-10 h-10 rounded-full bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-colors">
                 <i className="fas fa-times"></i>
               </button>
@@ -1032,7 +1068,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
 
             <form onSubmit={handleSaveGeneral} className="flex-1 overflow-y-auto p-8 space-y-6">
               <div>
-                <label className="block text-sm font-bold text-emerald-900 mb-1.5">Plan Özeti</label>
+                <label className="block text-sm font-bold text-emerald-900 mb-1.5">{t('planSummary')}</label>
                 <textarea 
                   required
                   rows={4}
@@ -1043,7 +1079,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-emerald-900 mb-1.5">Günlük Hedef Kalori (kcal)</label>
+                <label className="block text-sm font-bold text-emerald-900 mb-1.5">{t('dailyCaloriesLabel')}</label>
                 <input 
                   type="number" 
                   required
@@ -1056,7 +1092,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
 
               <div className="grid grid-cols-3 gap-4 p-5 bg-emerald-50/50 rounded-2xl border border-emerald-100/50">
                 <div>
-                  <label className="block text-[10px] font-black text-emerald-600 uppercase tracking-wider mb-1">Protein (g)</label>
+                  <label className="block text-[10px] font-black text-emerald-600 uppercase tracking-wider mb-1">{t('proteinUnit')}</label>
                   <input 
                     type="number" 
                     required
@@ -1067,7 +1103,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-blue-600 uppercase tracking-wider mb-1">Karbonhidrat (g)</label>
+                  <label className="block text-[10px] font-black text-blue-600 uppercase tracking-wider mb-1">{t('carbsUnit')}</label>
                   <input 
                     type="number" 
                     required
@@ -1078,7 +1114,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-amber-600 uppercase tracking-wider mb-1">Yağ (g)</label>
+                  <label className="block text-[10px] font-black text-amber-600 uppercase tracking-wider mb-1">{t('fatUnit')}</label>
                   <input 
                     type="number" 
                     required
@@ -1096,13 +1132,13 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   onClick={() => { setIsEditingGeneral(false); setFormGeneral(null); }}
                   className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-all text-sm"
                 >
-                  Kapat
+                  {t('close')}
                 </button>
                 <button 
                   type="submit"
                   className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-200 text-sm"
                 >
-                  Kaydet
+                  {t('save')}
                 </button>
               </div>
             </form>

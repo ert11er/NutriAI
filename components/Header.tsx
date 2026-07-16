@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { translations } from '../src/translations';
 
 interface HeaderProps {
   onReset: () => void;
@@ -9,6 +10,20 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onReset, onToggleProgressTracker, onImportPlan }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [lang, setLang] = useState<'tr' | 'en'>(() => (localStorage.getItem('lang') as 'tr' | 'en') || 'tr');
+
+  const t = (key: any) => {
+    const section = translations[lang];
+    return (section as any)[key] || key;
+  };
+
+  useEffect(() => {
+    const handleLanguageChange = () => {
+      setLang((localStorage.getItem('lang') as 'tr' | 'en') || 'tr');
+    };
+    window.addEventListener('languageChange', handleLanguageChange);
+    return () => window.removeEventListener('languageChange', handleLanguageChange);
+  }, []);
 
   const toggleMobileMenu = () => {
     setMobileMenuOpen(prev => !prev);
@@ -45,21 +60,36 @@ const Header: React.FC<HeaderProps> = ({ onReset, onToggleProgressTracker, onImp
         
         {/* Masaüstü Navigasyon */}
         <nav className="hidden md:flex items-center gap-6">
-          <button onClick={() => handleMenuItemClick(onReset)} className="text-green-800 font-semibold hover:text-green-600 transition text-sm">Yeni Plan</button>
-          <button onClick={() => handleMenuItemClick(onToggleProgressTracker)} className="text-green-800 font-semibold hover:text-green-600 transition text-sm">İlerleme Takibi</button>
+          <button onClick={() => handleMenuItemClick(onReset)} className="text-green-800 font-semibold hover:text-green-600 transition text-sm">{t('newPlan')}</button>
+          <button onClick={() => handleMenuItemClick(onToggleProgressTracker)} className="text-green-800 font-semibold hover:text-green-600 transition text-sm">{t('progressTracker')}</button>
           <button onClick={() => handleMenuItemClick(onImportPlan)} className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition text-sm shadow-md">
-            <i className="fas fa-upload mr-2"></i> İçe Aktar
+            <i className="fas fa-upload mr-2"></i> {t('importPlanBtn')}
           </button>
         </nav>
 
         {/* Mobil Menü Butonu */}
-        <button 
-          onClick={toggleMobileMenu} 
-          className="md:hidden w-10 h-10 flex items-center justify-center text-green-800 bg-green-50 rounded-xl"
-          aria-label="Menü Aç"
-        >
-          <i className="fas fa-bars text-xl"></i>
-        </button>
+        <div className="flex gap-2 md:hidden">
+          <button 
+            onClick={() => {
+              const newLang = lang === 'tr' ? 'en' : 'tr';
+              setLang(newLang);
+              localStorage.setItem('lang', newLang);
+              // Dispatch event to notify other components
+              window.dispatchEvent(new CustomEvent('languageChange'));
+            }}
+            className="w-10 h-10 flex items-center justify-center text-green-800 bg-green-50 rounded-xl font-bold text-xs"
+            aria-label="Dili Değiştir"
+          >
+            {lang === 'tr' ? 'EN' : 'TR'}
+          </button>
+          <button 
+            onClick={toggleMobileMenu} 
+            className="w-10 h-10 flex items-center justify-center text-green-800 bg-green-50 rounded-xl"
+            aria-label="Menü Aç"
+          >
+            <i className="fas fa-bars text-xl"></i>
+          </button>
+        </div>
       </div>
 
       {/* Mobil Menü Katmanı */}
@@ -76,7 +106,7 @@ const Header: React.FC<HeaderProps> = ({ onReset, onToggleProgressTracker, onImp
             {/* Başlık Bölümü */}
             <div className="flex items-center justify-between p-6 border-b border-gray-100 safe-white-bg">
               <span className="text-xl font-bold text-green-800 flex items-center gap-2">
-                <i className="fas fa-leaf text-green-600"></i> NutriAI Menü
+                <i className="fas fa-leaf text-green-600"></i> {t('menuTitle')}
               </span>
               <button 
                 onClick={toggleMobileMenu} 
@@ -96,7 +126,7 @@ const Header: React.FC<HeaderProps> = ({ onReset, onToggleProgressTracker, onImp
                 <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-sm shrink-0">
                   <i className="fas fa-chart-line"></i>
                 </div>
-                <span>İlerleme Takibi</span>
+                <span>{t('progressTracker')}</span>
               </button>
 
               <button 
@@ -106,7 +136,7 @@ const Header: React.FC<HeaderProps> = ({ onReset, onToggleProgressTracker, onImp
                 <div className="w-10 h-10 rounded-xl bg-green-600 flex items-center justify-center text-white shadow-sm shrink-0">
                   <i className="fas fa-plus-circle"></i>
                 </div>
-                <span>Yeni Diyet Planı</span>
+                <span>{t('newDietPlanMenu')}</span>
               </button>
               
               <button 
@@ -116,7 +146,7 @@ const Header: React.FC<HeaderProps> = ({ onReset, onToggleProgressTracker, onImp
                 <div className="w-10 h-10 rounded-xl bg-purple-600 flex items-center justify-center text-white shadow-sm shrink-0">
                   <i className="fas fa-upload"></i>
                 </div>
-                <span>Plan İçe Aktar</span>
+                <span>{t('importPlanMenu')}</span>
               </button>
             </nav>
 
@@ -125,8 +155,8 @@ const Header: React.FC<HeaderProps> = ({ onReset, onToggleProgressTracker, onImp
               <div className="flex items-center gap-3 text-green-700">
                 <i className="fas fa-heartbeat text-xl"></i>
                 <div>
-                  <p className="font-bold text-sm">Sağlıklı Kalın!</p>
-                  <p className="text-xs opacity-80">Size en uygun planı hazırladık.</p>
+                  <p className="font-bold text-sm">{t('stayHealthy')}</p>
+                  <p className="text-xs opacity-80">{t('preparedBest')}</p>
                 </div>
               </div>
             </div>

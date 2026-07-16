@@ -10,6 +10,7 @@ import ProgressTracker from './components/ProgressTracker';
 import { UserData, DietPlan, WeightEntry, ExportedDietPlanData } from './types';
 import { analyzeAndAsk, generateFinalPlan } from './services/geminiService';
 import { getDietPlan } from './services/firebase';
+import { translations } from './src/translations';
 
 const Home: React.FC = () => {
   const { planId } = useParams<{ planId?: string }>();
@@ -21,6 +22,20 @@ const Home: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showProgressTracker, setShowProgressTracker] = useState(false);
   const [inputPlanId, setInputPlanId] = useState('');
+
+  const [lang, setLang] = useState<'tr' | 'en'>(() => (localStorage.getItem('lang') as 'tr' | 'en') || 'tr');
+  const t = (key: any) => {
+    const section = translations[lang];
+    return (section as any)[key] || key;
+  };
+
+  useEffect(() => {
+    const handleLanguageChange = () => {
+      setLang((localStorage.getItem('lang') as 'tr' | 'en') || 'tr');
+    };
+    window.addEventListener('languageChange', handleLanguageChange);
+    return () => window.removeEventListener('languageChange', handleLanguageChange);
+  }, []);
   
   const [weightHistory, setWeightHistory] = useState<WeightEntry[]>(() => {
     try {
@@ -49,17 +64,17 @@ const Home: React.FC = () => {
             setDietPlan(result.plan);
             setShowProgressTracker(false);
           } else {
-            setError('Plan bulunamadı.');
+            setError(t('notFound'));
           }
         } catch (err: any) {
-          setError('Plan yüklenirken bir hata oluştu.');
+          setError(t('loadError'));
         } finally {
           setLoading(false);
         }
       }
     };
     loadPlan();
-  }, [planId]);
+  }, [planId, lang]);
 
   // Sadece diyet akışını sıfırlayan fonksiyon
   const clearDietFlow = () => {
@@ -96,7 +111,7 @@ const Home: React.FC = () => {
         setDietPlan(result.plan);
       }
     } catch (err: any) {
-      setError(err.message || 'Analiz sırasında bir hata oluştu.');
+      setError(err.message || t('loadError'));
     } finally {
       setLoading(false);
     }
@@ -110,7 +125,7 @@ const Home: React.FC = () => {
       setDietPlan(plan);
       setPendingQuestions(null);
     } catch (err: any) {
-      setError('Diyet planı oluşturulamadı. Lütfen tekrar deneyin.');
+      setError(t('loadError'));
     } finally {
       setLoading(false);
     }
@@ -148,17 +163,17 @@ const Home: React.FC = () => {
                 setDietPlan(importedData.plan);
                 setShowProgressTracker(false);
               } else {
-                setError('Geçersiz dosya formatı.');
+                setError(t('notFound'));
               }
             } catch (pErr) {
-              setError('Dosya okunamadı.');
+              setError(t('loadError'));
             } finally {
               setLoading(false);
             }
           };
           reader.readAsText(file);
         } catch (fErr) {
-          setError('Hata oluştu.');
+          setError(t('loadError'));
           setLoading(false);
         }
       }
@@ -188,20 +203,20 @@ const Home: React.FC = () => {
               <div className="max-w-4xl mx-auto">
                 <div className="text-center mb-10">
                   <h1 className="text-4xl md:text-5xl font-bold text-green-800 mb-4">
-                    Kişiselleştirilmiş Yapay Zeka Diyetisyeniniz
+                    {t('heroTitle')}
                   </h1>
                   <p className="text-lg text-green-700 max-w-2xl mx-auto">
-                    Bilimsel temelli, kişiye özel beslenme programınızı interaktif bir şekilde oluşturun.
+                    {t('heroSubtitle')}
                   </p>
                 </div>
 
                 {/* Plan Kod Girişi */}
                 <div className="max-w-md mx-auto mb-12 bg-white p-6 rounded-2xl shadow-sm border border-green-100">
-                  <h2 className="text-sm font-bold text-green-800 mb-3 uppercase tracking-wider text-center">Zaten bir kodun mu var?</h2>
+                  <h2 className="text-sm font-bold text-green-800 mb-3 uppercase tracking-wider text-center">{t('haveCode')}</h2>
                   <div className="flex gap-2">
                     <input 
                       type="text" 
-                      placeholder="Örn: AdS12j7J5G"
+                      placeholder={t('codePlaceholder')}
                       value={inputPlanId}
                       onChange={(e) => setInputPlanId(e.target.value)}
                       maxLength={10}
@@ -212,7 +227,7 @@ const Home: React.FC = () => {
                       disabled={inputPlanId.length !== 10}
                       className="px-6 py-2 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-all disabled:opacity-50 disabled:grayscale"
                     >
-                      Planı Getir
+                      {t('getPlan')}
                     </button>
                   </div>
                 </div>
@@ -227,7 +242,7 @@ const Home: React.FC = () => {
               <div className="max-w-2xl mx-auto bg-red-50 border border-red-200 p-6 rounded-2xl text-center">
                 <i className="fas fa-exclamation-triangle text-red-500 text-3xl mb-4"></i>
                 <p className="text-red-800 font-medium mb-4">{error}</p>
-                <button onClick={handleFullReset} className="px-6 py-2 bg-red-600 text-white rounded-xl">Başa Dön</button>
+                <button onClick={handleFullReset} className="px-6 py-2 bg-red-600 text-white rounded-xl">{t('backToHome')}</button>
               </div>
             )}
 
@@ -254,7 +269,7 @@ const Home: React.FC = () => {
       </main>
 
       <footer className="py-6 text-center text-green-600 text-sm border-t border-green-100 mt-auto no-print">
-        <p>© 2024 NutriAI. Bu bir yapay zeka tavsiyesidir, tıbbi karar yerine geçmez.</p>
+        <p>{t('footerNote')}</p>
       </footer>
     </div>
   );

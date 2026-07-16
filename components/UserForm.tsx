@@ -1,12 +1,27 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserData } from '../types';
+import { translations } from '../src/translations';
 
 interface UserFormProps {
   onSubmit: (data: UserData) => void;
 }
 
 const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
+  const [lang, setLang] = useState<'tr' | 'en'>(() => (localStorage.getItem('lang') as 'tr' | 'en') || 'tr');
+  const t = (key: any) => {
+    const section = translations[lang];
+    return (section as any)[key] || key;
+  };
+
+  useEffect(() => {
+    const handleLanguageChange = () => {
+      setLang((localStorage.getItem('lang') as 'tr' | 'en') || 'tr');
+    };
+    window.addEventListener('languageChange', handleLanguageChange);
+    return () => window.removeEventListener('languageChange', handleLanguageChange);
+  }, []);
+
   const [formData, setFormData] = useState<Partial<UserData>>({
     gender: 'male',
     activityLevel: 'moderate',
@@ -47,12 +62,12 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
         {/* Basic Stats */}
         <div className="space-y-4">
           <h3 className="text-xl font-bold text-green-900 flex items-center gap-2">
-            <i className="fas fa-user-circle text-green-500"></i> Kişisel Bilgiler
+            <i className="fas fa-user-circle text-green-500"></i> {t('personalInfo')}
           </h3>
           
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-green-700 mb-1">Yaş</label>
+              <label className="block text-sm font-semibold text-green-700 mb-1">{t('age')}</label>
               <input 
                 type="number" name="age" min="1" max="120"
                 onChange={handleChange}
@@ -61,21 +76,21 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-green-700 mb-1">Cinsiyet</label>
+              <label className="block text-sm font-semibold text-green-700 mb-1">{t('gender')}</label>
               <select 
                 name="gender" onChange={handleChange}
                 className="w-full px-4 py-2 rounded-xl border border-green-100 focus:ring-2 focus:ring-green-500 outline-none"
               >
-                <option value="male">Erkek</option>
-                <option value="female">Kadın</option>
-                <option value="other">Diğer</option>
+                <option value="male">{t('genderMale')}</option>
+                <option value="female">{t('genderFemale')}</option>
+                <option value="other">{t('genderOther')}</option>
               </select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-green-700 mb-1">Kilo (kg)</label>
+              <label className="block text-sm font-semibold text-green-700 mb-1">{t('weight')}</label>
               <input 
                 type="number" name="weight" min="20" max="300" step="0.1"
                 onChange={handleChange}
@@ -84,7 +99,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-green-700 mb-1">Boy (cm)</label>
+              <label className="block text-sm font-semibold text-green-700 mb-1">{t('height')}</label>
               <input 
                 type="number" name="height" min="100" max="250"
                 onChange={handleChange}
@@ -98,45 +113,45 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
         {/* Goals and Activity */}
         <div className="space-y-4">
           <h3 className="text-xl font-bold text-green-900 flex items-center gap-2">
-            <i className="fas fa-bullseye text-green-500"></i> Hedef ve Yaşam Tarzı
+            <i className="fas fa-bullseye text-green-500"></i> {t('goalAndLifestyle')}
           </h3>
           
           <div>
-            <label className="block text-sm font-semibold text-green-700 mb-1">Aktivite Seviyesi</label>
+            <label className="block text-sm font-semibold text-green-700 mb-1">{t('activityLevel')}</label>
             <select 
               name="activityLevel" onChange={handleChange}
               className="w-full px-4 py-2 rounded-xl border border-green-100 focus:ring-2 focus:ring-green-500 outline-none"
             >
-              <option value="sedentary">Hareketsiz (Masa başı iş)</option>
-              <option value="light">Az Hareketli (Haftada 1-2 gün spor)</option>
-              <option value="moderate">Orta Hareketli (Haftada 3-5 gün spor)</option>
-              <option value="active">Çok Hareketli (Haftada 6-7 gün spor)</option>
-              <option value="very_active">Profesyonel Sporcu / Fiziksel İş</option>
+              <option value="sedentary">{t('activitySedentary')}</option>
+              <option value="light">{t('activityLight')}</option>
+              <option value="moderate">{t('activityModerate')}</option>
+              <option value="active">{t('activityActive')}</option>
+              <option value="very_active">{t('activityVeryActive')}</option>
             </select>
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-green-700 mb-1">Beslenme Hedefi</label>
+            <label className="block text-sm font-semibold text-green-700 mb-1">{t('nutritionGoal')}</label>
             <select 
               name="goal" onChange={handleChange}
               className="w-full px-4 py-2 rounded-xl border border-green-100 focus:ring-2 focus:ring-green-500 outline-none"
             >
-              <option value="lose">Kilo Vermek</option>
-              <option value="maintain">Kiloyu Korumak</option>
-              <option value="gain">Kas/Kilo Almak</option>
+              <option value="lose">{t('goalLose')}</option>
+              <option value="maintain">{t('goalMaintain')}</option>
+              <option value="gain">{t('goalGain')}</option>
             </select>
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-green-700 mb-1">Diyet Süresi</label>
+            <label className="block text-sm font-semibold text-green-700 mb-1">{t('dietDuration')}</label>
             <select 
               name="duration" value={formData.duration || '1_week'} onChange={handleChange}
               className="w-full px-4 py-2 rounded-xl border border-green-100 focus:ring-2 focus:ring-green-500 outline-none font-medium"
             >
-              <option value="5_days">5 Günlük Diyet Planı</option>
-              <option value="1_week">1 Haftalık Diyet Planı</option>
-              <option value="2_weeks">2 Haftalık Diyet Planı</option>
-              <option value="1_month">1 Aylık Diyet Planı (Döngüsel/Önerili)</option>
+              <option value="5_days">{t('duration5Days')}</option>
+              <option value="1_week">{t('duration1Week')}</option>
+              <option value="2_weeks">{t('duration2Weeks')}</option>
+              <option value="1_month">{t('duration1Month')}</option>
             </select>
           </div>
         </div>
@@ -145,11 +160,11 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
       {/* Preferences & Restrictions */}
       <div className="space-y-6 pt-4 border-t border-green-50">
         <h3 className="text-xl font-bold text-green-900 flex items-center gap-2">
-          <i className="fas fa-cookie-bite text-green-500"></i> Tercihler ve Kısıtlamalar
+          <i className="fas fa-cookie-bite text-green-500"></i> {t('preferencesAndRestrictions')}
         </h3>
         
         <div>
-          <label className="block text-sm font-semibold text-green-700 mb-3">Beslenme Tipi</label>
+          <label className="block text-sm font-semibold text-green-700 mb-3">{t('dietType')}</label>
           <div className="flex flex-wrap gap-2">
             {dietaryOptions.map(opt => (
               <button
@@ -162,7 +177,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
                   : 'bg-green-50 text-green-700 hover:bg-green-100'
                 }`}
               >
-                {opt}
+                {t(opt)}
               </button>
             ))}
           </div>
@@ -171,25 +186,25 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-semibold text-green-700 mb-1 flex items-center gap-2">
-              <i className="fas fa-skull-crossbones text-red-400 text-xs"></i> Alerjiler
+              <i className="fas fa-skull-crossbones text-red-400 text-xs"></i> {t('allergies')}
             </label>
             <input 
               type="text"
               name="allergies"
               onChange={handleChange}
-              placeholder="Örn: Yer fıstığı, çilek..."
+              placeholder={t('allergiesPlaceholder')}
               className="w-full px-4 py-2 rounded-xl border border-green-100 focus:ring-2 focus:ring-green-500 outline-none transition"
             />
           </div>
           <div>
             <label className="block text-sm font-semibold text-green-700 mb-1 flex items-center gap-2">
-              <i className="fas fa-thumbs-down text-orange-400 text-xs"></i> Sevmediğim Yiyecekler
+              <i className="fas fa-thumbs-down text-orange-400 text-xs"></i> {t('dislikedFoods')}
             </label>
             <input 
               type="text"
               name="dislikedFoods"
               onChange={handleChange}
-              placeholder="Örn: Bamya, ciğer..."
+              placeholder={t('dislikedPlaceholder')}
               className="w-full px-4 py-2 rounded-xl border border-green-100 focus:ring-2 focus:ring-green-500 outline-none transition"
             />
           </div>
@@ -197,22 +212,22 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-semibold text-green-700 mb-1">Kronik Rahatsızlıklar</label>
+            <label className="block text-sm font-semibold text-green-700 mb-1">{t('chronicConditions')}</label>
             <textarea 
               name="medicalConditions"
               onChange={handleChange}
-              placeholder="Örn: İnsülin direnci..."
+              placeholder={t('chronicPlaceholder')}
               className="w-full px-4 py-2 rounded-xl border border-green-100 focus:ring-2 focus:ring-green-500 outline-none min-h-[80px]"
             />
           </div>
           <div>
             <label className="block text-sm font-semibold text-green-700 mb-1 flex items-center gap-2">
-              <i className="fas fa-comment-dots text-blue-500 text-xs"></i> Ek Mesaj / Özel İstekler
+              <i className="fas fa-comment-dots text-blue-500 text-xs"></i> {t('extraNotes')}
             </label>
             <textarea 
               name="extraNotes"
               onChange={handleChange}
-              placeholder="Örn: Ekonomik bir liste olsun, öğle yemeğini dışarıda yiyeceğim, pratik tarifler olsun..."
+              placeholder={t('extraNotesPlaceholder')}
               className="w-full px-4 py-2 rounded-xl border border-green-100 focus:ring-2 focus:ring-green-500 outline-none min-h-[80px]"
             />
           </div>
@@ -223,7 +238,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
         type="submit"
         className="w-full bg-green-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-green-700 shadow-xl shadow-green-200 transition-all hover:-translate-y-1"
       >
-        Özel Diyet Listemi Oluştur <i className="fas fa-magic ml-2"></i>
+        {t('createDietPlan')} <i className="fas fa-magic ml-2"></i>
       </button>
     </form>
   );
