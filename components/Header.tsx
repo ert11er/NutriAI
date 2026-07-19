@@ -37,10 +37,12 @@ const Header: React.FC<HeaderProps> = ({ onReset }) => {
               localStorage.setItem('lang', newLang);
               window.dispatchEvent(new CustomEvent('languageChange'));
             }}
-            className="w-10 h-10 flex items-center justify-center text-green-800 bg-green-50 hover:bg-green-100 transition rounded-xl font-bold text-xs"
+            className="px-3 h-10 flex items-center gap-1.5 text-green-800 bg-green-50 hover:bg-green-100 transition rounded-xl font-bold text-xs"
+            title={lang === 'tr' ? 'Switch to English' : 'Türkçeye Geç'}
             aria-label="Change Language"
           >
-            {lang === 'tr' ? 'EN' : 'TR'}
+            <i className="fas fa-globe text-xs"></i>
+            <span>{lang === 'tr' ? 'TR' : 'EN'}</span>
           </button>
         </div>
       </div>

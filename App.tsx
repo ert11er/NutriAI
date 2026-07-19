@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useParams, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'motion/react';
 import Header from './components/Header';
 import UserForm from './components/UserForm';
 import DietDashboard from './components/DietDashboard';
@@ -133,10 +134,16 @@ const Home: React.FC = () => {
       />
       
       <main className="flex-grow container mx-auto px-4 py-8">
-        <>
+        <AnimatePresence mode="wait">
           {/* Form Görünümü: Hiçbir veri yoksa ve yükleme yapılmıyorsa */}
             {!userData && !loading && !dietPlan && !pendingQuestions && (
-              <div className="max-w-4xl mx-auto">
+              <motion.div 
+                key="home"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="max-w-4xl mx-auto"
+              >
                 <div className="text-center mb-10">
                   <h1 className="text-4xl md:text-5xl font-bold text-green-800 mb-4">
                     {t('heroTitle')}
@@ -161,7 +168,7 @@ const Home: React.FC = () => {
                     <button 
                       onClick={handleGetPlanById}
                       disabled={inputPlanId.length !== 10}
-                      className="px-6 py-2 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-all disabled:opacity-50 disabled:grayscale"
+                      className="px-6 py-2 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-all disabled:opacity-50 disabled:grayscale active:scale-95"
                     >
                       {t('getPlan')}
                     </button>
@@ -169,38 +176,67 @@ const Home: React.FC = () => {
                 </div>
 
                 <UserForm onSubmit={handleFormSubmit} />
-              </div>
+              </motion.div>
             )}
 
-            {loading && <LoadingState />}
+            {loading && (
+              <motion.div 
+                key="loading"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <LoadingState />
+              </motion.div>
+            )}
 
             {error && (
-              <div className="max-w-2xl mx-auto bg-red-50 border border-red-200 p-6 rounded-2xl text-center">
+              <motion.div 
+                key="error"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="max-w-2xl mx-auto bg-red-50 border border-red-200 p-6 rounded-2xl text-center"
+              >
                 <i className="fas fa-exclamation-triangle text-red-500 text-3xl mb-4"></i>
                 <p className="text-red-800 font-medium mb-4">{error}</p>
-                <button onClick={handleFullReset} className="px-6 py-2 bg-red-600 text-white rounded-xl">{t('backToHome')}</button>
-              </div>
+                <button onClick={handleFullReset} className="px-6 py-2 bg-red-600 text-white rounded-xl active:scale-95">{t('backToHome')}</button>
+              </motion.div>
             )}
 
             {pendingQuestions && !loading && (
-              <QuestionStep 
-                questions={pendingQuestions} 
-                onSubmit={handleQuestionsSubmit} 
-                onCancel={handleFullReset}
-              />
+              <motion.div 
+                key="questions"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <QuestionStep 
+                  questions={pendingQuestions} 
+                  onSubmit={handleQuestionsSubmit} 
+                  onCancel={handleFullReset}
+                />
+              </motion.div>
             )}
 
             {dietPlan && !loading && (
-              <DietDashboard 
-                plan={dietPlan} 
-                userData={userData!} 
-                onReset={handleFullReset}
-                weightHistory={weightHistory}
-                planId={planId}
-                onUpdatePlan={(updatedPlan) => setDietPlan(updatedPlan)}
-              />
+              <motion.div 
+                key="dashboard"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <DietDashboard 
+                  plan={dietPlan} 
+                  userData={userData!} 
+                  onReset={handleFullReset}
+                  weightHistory={weightHistory}
+                  planId={planId}
+                  onUpdatePlan={(updatedPlan) => setDietPlan(updatedPlan)}
+                />
+              </motion.div>
             )}
-          </>
+          </AnimatePresence>
       </main>
 
       <footer className="py-6 text-center text-green-600 text-sm border-t border-green-100 mt-auto no-print">

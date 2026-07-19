@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { UserData } from '../types';
 import { translations } from '../src/translations';
 
@@ -57,10 +58,21 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
   const dietaryOptions = ["Vegan", "Vejetaryen", "Glutensiz", "Laktozsuz", "Ketojenik", "Düşük Karbonhidrat", "Akdeniz Diyeti"];
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-8 rounded-3xl shadow-xl shadow-green-900/5 border border-green-50/50 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <motion.form 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      onSubmit={handleSubmit} 
+      className="bg-white p-8 rounded-3xl shadow-xl shadow-green-900/5 border border-green-50/50 space-y-8"
+    >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Basic Stats */}
-        <div className="space-y-4">
+        <motion.div 
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.2 }}
+          className="space-y-4"
+        >
           <h3 className="text-xl font-bold text-green-900 flex items-center gap-2">
             <i className="fas fa-user-circle text-green-500"></i> {t('personalInfo')}
           </h3>
@@ -108,10 +120,15 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
               />
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Goals and Activity */}
-        <div className="space-y-4">
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.3 }}
+          className="space-y-4"
+        >
           <h3 className="text-xl font-bold text-green-900 flex items-center gap-2">
             <i className="fas fa-bullseye text-green-500"></i> {t('goalAndLifestyle')}
           </h3>
@@ -154,11 +171,16 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
               <option value="1_month">{t('duration1Month')}</option>
             </select>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Preferences & Restrictions */}
-      <div className="space-y-6 pt-4 border-t border-green-50">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+        className="space-y-6 pt-4 border-t border-green-50"
+      >
         <h3 className="text-xl font-bold text-green-900 flex items-center gap-2">
           <i className="fas fa-cookie-bite text-green-500"></i> {t('preferencesAndRestrictions')}
         </h3>
@@ -167,9 +189,11 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
           <label className="block text-sm font-semibold text-green-700 mb-3">{t('dietType')}</label>
           <div className="flex flex-wrap gap-2">
             {dietaryOptions.map(opt => (
-              <button
+              <motion.button
                 key={opt}
                 type="button"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => handleRestrictionToggle(opt)}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
                   formData.restrictions?.includes(opt) 
@@ -178,7 +202,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
                 }`}
               >
                 {t(opt)}
-              </button>
+              </motion.button>
             ))}
           </div>
         </div>
@@ -232,15 +256,17 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit }) => {
             />
           </div>
         </div>
-      </div>
+      </motion.div>
 
-      <button 
+      <motion.button 
         type="submit"
-        className="w-full bg-green-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-green-700 shadow-xl shadow-green-200 transition-all hover:-translate-y-1"
+        whileHover={{ scale: 1.01 }}
+        whileTap={{ scale: 0.98 }}
+        className="w-full bg-green-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-green-700 shadow-xl shadow-green-200 transition-all"
       >
         {t('createDietPlan')} <i className="fas fa-magic ml-2"></i>
-      </button>
-    </form>
+      </motion.button>
+    </motion.form>
   );
 };
 

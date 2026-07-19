@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { DietPlan, UserData, Meal, WeightEntry } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import { saveDietPlan, updateDietPlan } from '../services/firebase';
@@ -20,20 +21,64 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
   const [lang, setLang] = useState<'tr' | 'en'>(() => (localStorage.getItem('lang') as 'tr' | 'en') || 'tr');
   const t = (key: keyof typeof translations.tr) => translations[lang][key];
 
-  const translateDay = (dayStr: string) => {
+  const translateDay = (dayStr: string, index?: number) => {
     if (!dayStr) return '';
-    const cleanDay = dayStr.trim();
-    const translation = (translations[lang] as any)[cleanDay];
+    const cleanDay = dayStr.trim().toLowerCase();
+    
+    // 1. Match digits (Day 1, Gün 2, etc.)
+    const match = cleanDay.match(/\d+/);
+    if (match) {
+      const num = match[0];
+      return lang === 'en' ? `Day ${num}` : `${num}. Gün`;
+    }
+
+    // 2. Map day names to standard indices (0-6)
+    const dayMapping: Record<string, number> = {
+      // Turkish
+      'pazartesi': 0, 'pzt': 0, 'paza': 0,
+      'salı': 1, 'sal': 1,
+      'çarşamba': 2, 'çar': 2, 'carsamba': 2, 'car': 2,
+      'perşembe': 3, 'per': 3, 'persembe': 3,
+      'cuma': 4, 'cum': 4,
+      'cumartesi': 5, 'cts': 5, 'cumartesı': 5,
+      'pazar': 6, 'paz': 6,
+
+      // English
+      'monday': 0, 'mon': 0,
+      'tuesday': 1, 'tue': 1, 'tu': 1,
+      'wednesday': 2, 'wed': 2, 'wedr': 2, 'wedn': 2, 'wednes': 2,
+      'thursday': 3, 'thu': 3, 'th': 3, 'thur': 3, 'thurs': 3,
+      'friday': 4, 'fri': 4,
+      'saturday': 5, 'sat': 5, 'sa': 5,
+      'sunday': 6, 'sun': 6, 'su': 6
+    };
+
+    let dayIndex: number | undefined = undefined;
+    for (const [key, val] of Object.entries(dayMapping)) {
+      if (cleanDay === key || cleanDay.startsWith(key) || key.startsWith(cleanDay)) {
+        dayIndex = val;
+        break;
+      }
+    }
+
+    // Fallback to loop index if provided
+    if (dayIndex === undefined && typeof index === 'number') {
+      dayIndex = index % 7;
+    }
+
+    if (dayIndex !== undefined) {
+      const standardDaysTr = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
+      const standardDaysEn = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+      return lang === 'en' ? standardDaysEn[dayIndex] : standardDaysTr[dayIndex];
+    }
+
+    // Fallback
+    const translation = (translations[lang] as any)[dayStr.trim()];
     if (translation) {
       return translation;
     }
-    if (cleanDay.toLowerCase().includes('gün')) {
-      const match = cleanDay.match(/\d+/);
-      if (match) {
-        return lang === 'en' ? `Day ${match[0]}` : `${match[0]}. Gün`;
-      }
-    }
-    return cleanDay;
+
+    return dayStr;
   };
 
   useEffect(() => {
@@ -267,9 +312,9 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
     if (totalMacroCalories === 0) return [];
 
     return [
-      { name: 'Protein', value: ((protein * 4) / totalMacroCalories) * 100, color: '#10b981' },
-      { name: 'Karbonhidrat', value: ((carbs * 4) / totalMacroCalories) * 100, color: '#3b82f6' },
-      { name: 'Yağ', value: ((fat * 9) / totalMacroCalories) * 100, color: '#f59e0b' },
+      { name: t('protein'), value: ((protein * 4) / totalMacroCalories) * 100, color: '#10b981' },
+      { name: t('carbs'), value: ((carbs * 4) / totalMacroCalories) * 100, color: '#3b82f6' },
+      { name: t('fat'), value: ((fat * 9) / totalMacroCalories) * 100, color: '#f59e0b' },
     ].filter(item => item.value > 0);
   };
   
@@ -320,8 +365,8 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
     content += `GÜNLÜK HEDEFLER:\n- Kalori: ${plan.dailyCalories || 0} kcal\n- Protein: ${macros.protein || 0} g\n- Karbonhidrat: ${macros.carbs || 0} g\n- Yağ: ${macros.fat || 0} g\n\n`;
     content += `DİYET PLANI DETAYLARI:\n----------------------------------------\n\n`;
     const weeklyPlan = plan.weeklyPlan || [];
-    weeklyPlan.forEach(day => {
-      content += `--- ${day.day.toUpperCase()} ---\n`;
+    weeklyPlan.forEach((day, idx) => {
+      content += `--- ${translateDay(day.day, idx).toUpperCase()} ---\n`;
       day.meals.forEach(meal => {
         content += `\n  [${meal.time}] ${meal.dish} (~${meal.calories} kcal)\n`;
         content += `    Açıklama: ${meal.description}\n`;
@@ -393,7 +438,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
   const rawCurrentDay = weeklyPlan[activeDay] || { day: '', meals: [] };
   const currentDay = {
     ...rawCurrentDay,
-    day: translateDay(rawCurrentDay.day) || (lang === 'en' ? `Day ${activeDay + 1}` : `${activeDay + 1}. Gün`)
+    day: translateDay(rawCurrentDay.day, activeDay) || (lang === 'en' ? `Day ${activeDay + 1}` : `${activeDay + 1}. Gün`)
   };
   const currentMeals = currentDay.meals || [];
   const totalDayCalories = currentMeals.reduce((sum, m) => sum + (Number(m.calories) || 0), 0);
@@ -526,7 +571,13 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
   const allFavoriteMeals = (plan.weeklyPlan || []).flatMap(d => (d.meals || []).filter(m => favoriteMeals.has(m.id)));
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700" ref={dashboardRef}>
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.7 }}
+      className="space-y-8" 
+      ref={dashboardRef}
+    >
        
        <div id="print-friendly-plan" className="absolute -left-[9999px] top-0 w-[210mm] bg-white p-8 print:static print:block print:w-full print:bg-white">
          <h1 className="text-4xl font-black text-emerald-950 mb-6">{t('printPlan')}</h1>
@@ -543,7 +594,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
          <div className="space-y-8">
            {(plan.weeklyPlan || []).map((day, dIdx) => (
              <div key={dIdx} className="break-inside-avoid border-b pb-6">
-               <h2 className="text-2xl font-black text-emerald-900 mb-4">{translateDay(day.day)}</h2>
+               <h2 className="text-2xl font-black text-emerald-900 mb-4">{translateDay(day.day, dIdx)}</h2>
                <div className="grid grid-cols-2 gap-4">
                   {day.meals.map((meal, mIdx) => (
                     <div key={mIdx} className="border p-4 rounded-xl bg-gray-50">
@@ -587,8 +638,8 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
             <div className="flex items-center justify-between">
           <h2 className="text-3xl font-extrabold text-green-950 tracking-tight">{t('planSummary')}</h2>
           <div className="flex gap-2 no-print">
-            <button onClick={() => setLang('tr')} className={`px-2 py-1 text-xs font-bold rounded ${lang === 'tr' ? 'bg-emerald-600 text-white' : 'bg-gray-200'}`}>TR</button>
-            <button onClick={() => setLang('en')} className={`px-2 py-1 text-xs font-bold rounded ${lang === 'en' ? 'bg-emerald-600 text-white' : 'bg-gray-200'}`}>EN</button>
+            <button onClick={() => { setLang('tr'); localStorage.setItem('lang', 'tr'); window.dispatchEvent(new CustomEvent('languageChange')); }} className={`px-2 py-1 text-xs font-bold rounded ${lang === 'tr' ? 'bg-emerald-600 text-white' : 'bg-gray-200'}`}>TR</button>
+            <button onClick={() => { setLang('en'); localStorage.setItem('lang', 'en'); window.dispatchEvent(new CustomEvent('languageChange')); }} className={`px-2 py-1 text-xs font-bold rounded ${lang === 'en' ? 'bg-emerald-600 text-white' : 'bg-gray-200'}`}>EN</button>
           </div>
           <button 
             onClick={handleEditGeneralClick}
@@ -685,17 +736,17 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
         <div className="flex overflow-x-auto p-5 gap-3 border-b border-green-50 scrollbar-hide no-print">
           {(plan.weeklyPlan || []).map((day, idx) => (
             <button key={idx} onClick={() => setActiveDay(idx)} className={`px-8 py-3.5 rounded-2xl font-bold whitespace-nowrap transition-all duration-300 ${activeDay === idx ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200 ring-4 ring-emerald-500/10 scale-105' : 'text-emerald-700 hover:bg-emerald-50'}`} aria-current={activeDay === idx ? 'page' : undefined}>
-              {translateDay(day.day)}
+              {translateDay(day.day, idx)}
             </button>
           ))}
         </div>
 
         <div className="p-8 md:p-12">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-10 gap-4">
-            <h3 className="text-3xl font-black text-emerald-950">{lang === 'tr' ? `${currentDay.day || `${activeDay + 1}. Gün`} Menüsü` : `${currentDay.day || `Day ${activeDay + 1}`} Menu`}</h3>
+            <h3 className="text-3xl font-black text-emerald-950">{currentDay.day || (lang === 'tr' ? `${activeDay + 1}. Gün` : `Day ${activeDay + 1}`)} {t('menu')}</h3>
             <div className="flex flex-wrap gap-3 items-center">
               <span className="bg-emerald-100/80 text-emerald-800 px-6 py-2.5 rounded-2xl text-sm font-black border border-emerald-200 dashed border-dashed">
-                {lang === 'tr' ? `${totalDayCalories} Toplam Kalori` : `${totalDayCalories} Total Calories`}
+                {totalDayCalories} {t('totalCalories')}
               </span>
               <div ref={downloadMenuRef} className="relative inline-block text-left no-print">
                 <button onClick={() => setShowDownloadOptions(prev => !prev)} type="button" className="inline-flex justify-center items-center w-full rounded-2xl border border-gray-200 shadow-sm px-4 py-3 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
@@ -706,13 +757,13 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
                     <div className="py-1">
                       <button onClick={() => { handleDownloadPDF(); setShowDownloadOptions(false); }} disabled={isGeneratingPdf} className="text-gray-700 disabled:opacity-50 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
-                        {isGeneratingPdf ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-file-pdf mr-2 text-red-500"></i>} {t('planPdf')}
+                        {isGeneratingPdf ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-file-pdf mr-2 text-red-500"></i>} {t('pdf')}
                       </button>
                       <button onClick={() => { handleDownloadPlanTxt(); setShowDownloadOptions(false); }} className="text-gray-700 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
-                        <i className="fas fa-file-alt mr-2 text-blue-500"></i> {t('planText')}
+                        <i className="fas fa-file-alt mr-2 text-blue-500"></i> {t('txt')}
                       </button>
                       <button onClick={() => { handleDownloadPlanJson(); setShowDownloadOptions(false); }} className="text-gray-700 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
-                        <i className="fas fa-file-code mr-2 text-purple-500"></i> {t('planJson')}
+                        <i className="fas fa-file-code mr-2 text-purple-500"></i> {t('json')}
                       </button>
                        <button onClick={() => { handleDownloadShoppingList(); setShowDownloadOptions(false); }} className="text-gray-700 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 border-t mt-1 pt-1">
                         <i className="fas fa-shopping-basket mr-2 text-orange-500"></i> {t('shoppingList')}
@@ -721,22 +772,22 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   </div>
                 )}
               </div>
-              <button onClick={() => setShowShoppingList(true)} className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-2xl shadow-lg shadow-blue-100 transition-all active:scale-95 no-print" title={lang === 'tr' ? 'Alışveriş Listesini Görüntüle' : 'View Shopping List'}>
+              <button onClick={() => setShowShoppingList(true)} className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-2xl shadow-lg shadow-blue-100 transition-all active:scale-95 no-print" title={t('shoppingList')}>
                 <i className="fas fa-shopping-basket"></i>
               </button>
               <button 
                 onClick={handleDownloadPDF} 
                 className="flex items-center gap-2 px-6 py-3 rounded-2xl shadow-lg transition-all active:scale-95 no-print font-bold bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
-                title={lang === 'tr' ? 'Planı Yazdır (PDF)' : 'Print Plan (PDF)'}
+                title={t('print')}
               >
                 <i className="fas fa-print"></i>
-                {lang === 'tr' ? 'Yazdır' : 'Print'}
+                {t('print')}
               </button>
               <button 
                 onClick={handleShare} 
                 disabled={isSharing}
                 className={`flex items-center gap-2 px-6 py-3 rounded-2xl shadow-lg transition-all active:scale-95 no-print font-bold ${sharedId ? 'bg-green-600 hover:bg-green-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white disabled:opacity-50`}
-                title={lang === 'tr' ? 'Planı Paylaş' : 'Share Plan'}
+                title={t('share')}
               >
                 {isSharing ? (
                   <i className="fas fa-spinner fa-spin"></i>
@@ -757,7 +808,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                     <i className="fas fa-link"></i>
                   </div>
                   <div>
-                    <p className="text-xs text-emerald-600 font-medium uppercase tracking-wider">{lang === 'tr' ? 'Plan Erişim Linkiniz' : 'Your Plan Access Link'}</p>
+                    <p className="text-xs text-emerald-600 font-medium uppercase tracking-wider">{t('planAccessLink')}</p>
                     <p className="text-sm font-mono text-emerald-800 break-all">{window.location.origin}/ID/{sharedId}</p>
                   </div>
                 </div>
@@ -772,65 +823,90 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {currentMeals.map((meal) => (
-              <div key={meal.id} className="group bg-emerald-50/20 p-8 rounded-[2rem] border border-transparent hover:border-emerald-100 hover:bg-white transition-all duration-500 hover:shadow-xl hover:shadow-emerald-900/5">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <span className="px-2 py-0.5 bg-emerald-100 text-[10px] font-black text-emerald-700 rounded-md uppercase tracking-widest mb-1.5 inline-block">{meal.time}</span>
-                    <h4 className="text-xl font-extrabold text-emerald-950 group-hover:text-emerald-600 transition-colors leading-tight">{meal.dish}</h4>
-                  </div>
-                  <div className="text-right shrink-0 flex items-center gap-2">
-                    <div>
-                      <span className="text-2xl font-black text-emerald-900 leading-none">{meal.calories}</span>
-                      <span className="text-[10px] block font-bold text-emerald-400 uppercase tracking-tighter">kcal</span>
-                    </div>
-                    <button onClick={() => toggleFavoriteMeal(meal.id)} className={`text-xl transition ${favoriteMeals.has(meal.id) ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}`} aria-label={favoriteMeals.has(meal.id) ? (lang === 'tr' ? 'Favorilerden Kaldır' : 'Remove from Favorites') : (lang === 'tr' ? 'Favorilere Ekle' : 'Add to Favorites')}>
-                      <i className={`fas fa-star ${favoriteMeals.has(meal.id) ? 'fa-solid' : 'fa-regular'}`}></i>
-                    </button>
-                  </div>
-                </div>
-                <p className="text-sm font-medium text-emerald-800/70 mb-8 leading-relaxed">{meal.description}</p>
-                <div className="mt-6 border-t border-emerald-100/50 pt-6 flex items-center justify-between no-print">
-                  {(meal.prepTime || meal.servings || meal.ingredients?.length || meal.alternatives?.length) ? (
-                    <button onClick={() => toggleExpandMeal(meal.id)} className="text-emerald-600 font-bold flex items-center gap-2 hover:text-emerald-800 transition" aria-expanded={expandedMeals.has(meal.id)} aria-controls={`recipe-details-${meal.id}`}>
-                      {lang === 'tr' ? 'Tarif Detayları' : 'Recipe Details'} <i className={`fas fa-chevron-${expandedMeals.has(meal.id) ? 'up' : 'down'} text-xs`}></i>
-                    </button>
-                  ) : (
-                    <span className="text-xs text-emerald-600/40 font-bold">{lang === 'tr' ? 'Tarif bilgisi yok' : 'No recipe details'}</span>
-                  )}
-                  <button 
-                    onClick={() => handleEditMealClick(meal)} 
-                    className="text-amber-600 hover:text-amber-800 font-bold flex items-center gap-1.5 transition"
+            <AnimatePresence mode="wait">
+              <motion.div 
+                key={activeDay}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+                className="grid grid-cols-1 md:grid-cols-2 gap-8 col-span-full"
+              >
+                {currentMeals.map((meal, index) => (
+                  <motion.div 
+                    key={meal.id} 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="group bg-emerald-50/20 p-8 rounded-[2rem] border border-transparent hover:border-emerald-100 hover:bg-white transition-all duration-500 hover:shadow-xl hover:shadow-emerald-900/5"
                   >
-                    <i className="fas fa-edit text-xs"></i> {lang === 'tr' ? 'Düzenle' : 'Edit'}
-                  </button>
-                </div>
-                {expandedMeals.has(meal.id) && (meal.prepTime || meal.servings || meal.ingredients?.length || meal.alternatives?.length) && (
-                  <div id={`recipe-details-${meal.id}`} className="mt-4 space-y-3 text-sm text-emerald-800 animate-in fade-in slide-in-from-top-2 duration-300">
-                    {meal.prepTime && <p><strong>{lang === 'tr' ? 'Hazırlık Süresi:' : 'Prep Time:'}</strong> {meal.prepTime}</p>}
-                    {meal.servings && <p><strong>{lang === 'tr' ? 'Porsiyon:' : 'Servings:'}</strong> {meal.servings}</p>}
-                    {meal.ingredients?.length && <div><p className="font-bold mb-1">{lang === 'tr' ? 'Malzemeler:' : 'Ingredients:'}</p><ul className="list-disc list-inside pl-2 space-y-0.5">{meal.ingredients.map((ing, idx) => <li key={idx}>{ing}</li>)}</ul></div>}
-                    {meal.alternatives?.length && <div><p className="font-bold mb-1">{lang === 'tr' ? 'Alternatifler:' : 'Alternatives:'}</p><ul className="list-disc list-inside pl-2 space-y-0.5">{meal.alternatives.map((alt, idx) => <li key={idx}>{alt}</li>)}</ul></div>}
-                    <div className="mt-4 pt-4 border-t border-emerald-100 flex items-center gap-3">
-                      <span className="text-xs font-bold text-emerald-600">{lang === 'tr' ? 'Tarifi İndir:' : 'Download Recipe:'}</span>
-                      <button onClick={() => handleDownloadRecipeTxt(meal)} className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-lg hover:bg-blue-200 transition" title={lang === 'tr' ? 'Metin olarak indir' : 'Download as TXT'}><i className="fas fa-file-alt mr-1"></i> TXT</button>
-                      <button onClick={() => handleDownloadRecipeJson(meal)} className="px-3 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-lg hover:bg-purple-200 transition" title={lang === 'tr' ? 'JSON olarak indir' : 'Download as JSON'}><i className="fas fa-file-code mr-1"></i> JSON</button>
+                    <div className="flex justify-between items-start mb-6">
+                      <div>
+                        <span className="px-2 py-0.5 bg-emerald-100 text-[10px] font-black text-emerald-700 rounded-md uppercase tracking-widest mb-1.5 inline-block">{meal.time}</span>
+                        <h4 className="text-xl font-extrabold text-emerald-950 group-hover:text-emerald-600 transition-colors leading-tight">{meal.dish}</h4>
+                      </div>
+                      <div className="text-right shrink-0 flex items-center gap-2">
+                        <div>
+                          <span className="text-2xl font-black text-emerald-900 leading-none">{meal.calories}</span>
+                          <span className="text-[10px] block font-bold text-emerald-400 uppercase tracking-tighter">kcal</span>
+                        </div>
+                        <button onClick={() => toggleFavoriteMeal(meal.id)} className={`text-xl transition ${favoriteMeals.has(meal.id) ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}`} aria-label={favoriteMeals.has(meal.id) ? (lang === 'tr' ? 'Favorilerden Kaldır' : 'Remove from Favorites') : (lang === 'tr' ? 'Favorilere Ekle' : 'Add to Favorites')}>
+                          <i className={`fas fa-star ${favoriteMeals.has(meal.id) ? 'fa-solid' : 'fa-regular'}`}></i>
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
-                <div className="flex gap-8 border-t border-emerald-100/50 pt-6 mt-8">
-                  <div className="flex flex-col"><span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">P</span><span className="text-base font-black text-emerald-950">{meal.protein}g</span></div>
-                  <div className="flex flex-col"><span className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">C</span><span className="text-base font-black text-emerald-950">{meal.carbs}g</span></div>
-                  <div className="flex flex-col"><span className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">F</span><span className="text-base font-black text-emerald-950">{meal.fat}g</span></div>
-                </div>
-              </div>
-            ))}
+                    <p className="text-sm font-medium text-emerald-800/70 mb-8 leading-relaxed">{meal.description}</p>
+                    <div className="mt-6 border-t border-emerald-100/50 pt-6 flex items-center justify-between no-print">
+                      {(meal.prepTime || meal.servings || meal.ingredients?.length || meal.alternatives?.length) ? (
+                        <button onClick={() => toggleExpandMeal(meal.id)} className="text-emerald-600 font-bold flex items-center gap-2 hover:text-emerald-800 transition" aria-expanded={expandedMeals.has(meal.id)} aria-controls={`recipe-details-${meal.id}`}>
+                          {lang === 'tr' ? 'Tarif Detayları' : 'Recipe Details'} <i className={`fas fa-chevron-${expandedMeals.has(meal.id) ? 'up' : 'down'} text-xs`}></i>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-emerald-600/40 font-bold">{lang === 'tr' ? 'Tarif bilgisi yok' : 'No recipe details'}</span>
+                      )}
+                      <button 
+                        onClick={() => handleEditMealClick(meal)} 
+                        className="text-amber-600 hover:text-amber-800 font-bold flex items-center gap-1.5 transition"
+                      >
+                        <i className="fas fa-edit text-xs"></i> {lang === 'tr' ? 'Düzenle' : 'Edit'}
+                      </button>
+                    </div>
+                    <AnimatePresence>
+                      {expandedMeals.has(meal.id) && (meal.prepTime || meal.servings || meal.ingredients?.length || meal.alternatives?.length) && (
+                        <motion.div 
+                          id={`recipe-details-${meal.id}`}
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="mt-4 space-y-3 text-sm text-emerald-800 overflow-hidden"
+                        >
+                          {meal.prepTime && <p><strong>{t('prepTime')}</strong> {meal.prepTime}</p>}
+                          {meal.servings && <p><strong>{t('servings')}</strong> {meal.servings}</p>}
+                          {meal.ingredients?.length && <div><p className="font-bold mb-1">{t('ingredients')}:</p><ul className="list-disc list-inside pl-2 space-y-0.5">{meal.ingredients.map((ing, idx) => <li key={idx}>{ing}</li>)}</ul></div>}
+                          {meal.alternatives?.length && <div><p className="font-bold mb-1">{t('alternatives')}:</p><ul className="list-disc list-inside pl-2 space-y-0.5">{meal.alternatives.map((alt, idx) => <li key={idx}>{alt}</li>)}</ul></div>}
+                          <div className="mt-4 pt-4 border-t border-emerald-100 flex items-center gap-3">
+                            <span className="text-xs font-bold text-emerald-600">{t('downloadRecipe')}:</span>
+                            <button onClick={() => handleDownloadRecipeTxt(meal)} className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-lg hover:bg-blue-200 transition" title={lang === 'tr' ? 'Metin olarak indir' : 'Download as TXT'}><i className="fas fa-file-alt mr-1"></i> TXT</button>
+                            <button onClick={() => handleDownloadRecipeJson(meal)} className="px-3 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-lg hover:bg-purple-200 transition" title={lang === 'tr' ? 'JSON olarak indir' : 'Download as JSON'}><i className="fas fa-file-code mr-1"></i> JSON</button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                    <div className="flex gap-8 border-t border-emerald-100/50 pt-6 mt-8">
+                      <div className="flex flex-col"><span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">P</span><span className="text-base font-black text-emerald-950">{meal.protein}g</span></div>
+                      <div className="flex flex-col"><span className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">C</span><span className="text-base font-black text-emerald-950">{meal.carbs}g</span></div>
+                      <div className="flex flex-col"><span className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">F</span><span className="text-base font-black text-emerald-950">{meal.fat}g</span></div>
+                    </div>
+                  </motion.div>
+                ))}
+              </motion.div>
+            </AnimatePresence>
           </div>
         </div>
       </div>
 
       <div className="flex flex-col items-center gap-4 pb-12 no-print">
-        <button onClick={onReset} className="flex items-center gap-2 text-emerald-600 font-extrabold hover:text-emerald-800 transition-all hover:scale-105"><i className="fas fa-redo"></i> {lang === 'tr' ? 'Bilgileri Güncelle ve Yeniden Oluştur' : 'Update Info & Regenerate'}</button>
+        <button onClick={onReset} className="flex items-center gap-2 text-emerald-600 font-extrabold hover:text-emerald-800 transition-all hover:scale-105"><i className="fas fa-redo"></i> {t('updateAndRegenerate')}</button>
       </div>
 
       {showShoppingList && (
@@ -847,7 +923,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
             </ul>
             <div className="mt-8 flex justify-end gap-3">
               <button onClick={() => setShowShoppingList(false)} className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition">{t('close')}</button>
-              <button onClick={() => { handleDownloadShoppingList(); setShowShoppingList(false);}} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition">{lang === 'tr' ? 'Listeyi İndir' : 'Download List'}</button>
+              <button onClick={() => { handleDownloadShoppingList(); setShowShoppingList(false);}} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition">{t('downloadList')}</button>
             </div>
           </div>
         </div>
@@ -860,9 +936,9 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
             <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-600 mb-6 mx-auto">
               <i className="fas fa-exclamation-triangle text-2xl"></i>
             </div>
-            <h3 className="text-xl font-extrabold text-amber-950 mb-3 text-center">⚠️ {lang === 'tr' ? 'Profesyonel Diyetisyen Uyarısı' : 'Professional Dietitian Warning'}</h3>
+            <h3 className="text-xl font-extrabold text-amber-950 mb-3 text-center">⚠️ {t('warningTitle')}</h3>
             <p className="text-sm text-amber-900/80 leading-relaxed mb-6 text-center font-semibold">
-              {lang === 'tr' ? 'Bu düzenleme paneli ve diyet planı değişiklik özellikleri yalnızca profesyonel diyetisyenler ve beslenme uzmanları tarafından kullanılmalıdır.' : 'This editing panel and diet plan modification features must only be used by professional dietitians and nutritionists.'}
+              {t('warningText')}
             </p>
             <p className="text-xs text-amber-800/70 leading-relaxed mb-8 text-center bg-amber-50/50 p-4 rounded-2xl border border-amber-100">
               {t('warningTextSecondary')}
@@ -872,13 +948,13 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                 onClick={() => { setShowWarningModal(false); setPendingEditMeal(null); setPendingGeneralEdit(false); }}
                 className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-all text-sm"
               >
-                {lang === 'tr' ? 'Vazgeç' : 'Cancel'}
+                {t('warningCancel')}
               </button>
               <button 
                 onClick={handleConfirmWarning}
                 className="flex-1 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-amber-200 text-sm"
               >
-                {lang === 'tr' ? 'Evet, Onaylıyorum' : 'Yes, I Confirm'}
+                {t('warningConfirm')}
               </button>
             </div>
           </div>
@@ -1079,7 +1155,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-emerald-900 mb-1.5">{t('dailyCaloriesLabel')}</label>
+                <label className="block text-sm font-bold text-emerald-900 mb-1.5">{t('dailyTargetCaloriesLabel')}</label>
                 <input 
                   type="number" 
                   required
@@ -1145,7 +1221,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 };
 
