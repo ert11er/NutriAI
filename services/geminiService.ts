@@ -167,9 +167,9 @@ export const generateFinalPlan = async (userData: UserData, answers: Record<stri
     
     Yanıt dili Türkçe olmalı.
     Plan Şunları İçermeli:
-    1. Günlük Kalori ve Makro (Protein, Karbonhidrat, Yağ) hedefleri.
+    1. Günlük Kalori ve Makro (Protein, Karbonhidrat, Yağ) hedefleri. ÖNEMLİ: Günlük toplam Protein, Karbonhidrat, Yağ ve Kalori değerleri, o günün tüm öğünlerindeki (yiyeceklerindeki) protein, karbonhidrat, yağ ve kalorilerin BİREBİR TOPLAMI ile eşleşmelidir.
     2. Belirtilen sürenin her günü için öğünler.
-    3. Her öğün için kalori tahmini ve tarif/içerik özeti.
+    3. Her öğün için kalori ve makro değerleri (protein, carbs, fat), tarif/içerik özeti.
     
     Yanıtı SADECE JSON formatında döndür.
   `;
@@ -185,5 +185,28 @@ export const generateFinalPlan = async (userData: UserData, answers: Record<stri
     throw new Error(err.error || "Sunucu hatası.");
   }
 
-  return response.json();
+  const rawPlan: DietPlan = await response.json();
+  
+  // Ensure plan.macros and dailyCalories match exact sum of first day's meals if available
+  if (rawPlan.weeklyPlan && rawPlan.weeklyPlan.length > 0) {
+    const dayMeals = rawPlan.weeklyPlan[0].meals || [];
+    if (dayMeals.length > 0) {
+      const sumProtein = dayMeals.reduce((acc, m) => acc + (Number(m.protein) || 0), 0);
+      const sumCarbs = dayMeals.reduce((acc, m) => acc + (Number(m.carbs) || 0), 0);
+      const sumFat = dayMeals.reduce((acc, m) => acc + (Number(m.fat) || 0), 0);
+      const sumCal = dayMeals.reduce((acc, m) => acc + (Number(m.calories) || 0), 0);
+      
+      return {
+        ...rawPlan,
+        dailyCalories: sumCal > 0 ? sumCal : rawPlan.dailyCalories,
+        macros: {
+          protein: sumProtein > 0 ? sumProtein : (rawPlan.macros?.protein || 0),
+          carbs: sumCarbs > 0 ? sumCarbs : (rawPlan.macros?.carbs || 0),
+          fat: sumFat > 0 ? sumFat : (rawPlan.macros?.fat || 0),
+        }
+      };
+    }
+  }
+
+  return rawPlan;
 };

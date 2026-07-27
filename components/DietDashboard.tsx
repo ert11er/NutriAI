@@ -2,10 +2,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DietPlan, UserData, Meal, WeightEntry } from '../types';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import { saveDietPlan, updateDietPlan } from '../services/firebase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import * as XLSX from 'xlsx';
 import { translations } from '../src/translations';
 
 interface DietDashboardProps {
@@ -99,6 +100,66 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
   const [sharedId, setSharedId] = useState<string | null>(planId || null);
   const [copySuccess, setCopySuccess] = useState(false);
 
+  const [localWeightHistory, setLocalWeightHistory] = useState<WeightEntry[]>(() => {
+    if (weightHistory && weightHistory.length > 0) return weightHistory;
+    try {
+      const stored = localStorage.getItem('weightHistory');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.error("Failed to parse weight history from localStorage", e);
+    }
+    if (userData && userData.weight) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      return [{ date: todayStr, weight: Number(userData.weight) }];
+    }
+    return [];
+  });
+
+  const [newWeight, setNewWeight] = useState<string>('');
+  const [newWeightDate, setNewWeightDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+
+  useEffect(() => {
+    if (weightHistory && weightHistory.length > 0) {
+      setLocalWeightHistory(weightHistory);
+    }
+  }, [weightHistory]);
+
+  const handleAddWeight = (e: React.FormEvent) => {
+    e.preventDefault();
+    const wNum = parseFloat(newWeight);
+    if (isNaN(wNum) || wNum <= 0) return;
+    const dateStr = newWeightDate || new Date().toISOString().split('T')[0];
+
+    const updated = [...localWeightHistory];
+    const existingIdx = updated.findIndex(item => item.date === dateStr);
+    if (existingIdx >= 0) {
+      updated[existingIdx] = { date: dateStr, weight: wNum };
+    } else {
+      updated.push({ date: dateStr, weight: wNum });
+    }
+    updated.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    setLocalWeightHistory(updated);
+    try {
+      localStorage.setItem('weightHistory', JSON.stringify(updated));
+    } catch (e) {
+      console.error(e);
+    }
+    setNewWeight('');
+  };
+
+  const handleDeleteWeight = (dateStr: string) => {
+    const updated = localWeightHistory.filter(item => item.date !== dateStr);
+    setLocalWeightHistory(updated);
+    try {
+      localStorage.setItem('weightHistory', JSON.stringify(updated));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const [hasDietitianWarningAcknowledged, setHasDietitianWarningAcknowledged] = useState(false);
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [pendingEditMeal, setPendingEditMeal] = useState<Meal | null>(null);
@@ -181,12 +242,27 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
       fat: Number(formMeal.fat) || 0,
     };
 
+    const updatedWeeklyPlan = plan.weeklyPlan.map(dayPlan => ({
+      ...dayPlan,
+      meals: dayPlan.meals.map(m => m.id === updatedMeal.id ? updatedMeal : m)
+    }));
+
+    // Calculate sum of active day's meals for updated macros & daily calories
+    const activeMeals = updatedWeeklyPlan[activeDay]?.meals || [];
+    const newTotalProtein = activeMeals.reduce((sum, m) => sum + (Number(m.protein) || 0), 0);
+    const newTotalCarbs = activeMeals.reduce((sum, m) => sum + (Number(m.carbs) || 0), 0);
+    const newTotalFat = activeMeals.reduce((sum, m) => sum + (Number(m.fat) || 0), 0);
+    const newTotalCalories = activeMeals.reduce((sum, m) => sum + (Number(m.calories) || 0), 0);
+
     const updatedPlan: DietPlan = {
       ...plan,
-      weeklyPlan: plan.weeklyPlan.map(dayPlan => ({
-        ...dayPlan,
-        meals: dayPlan.meals.map(m => m.id === updatedMeal.id ? updatedMeal : m)
-      }))
+      dailyCalories: newTotalCalories > 0 ? newTotalCalories : plan.dailyCalories,
+      macros: {
+        protein: newTotalProtein,
+        carbs: newTotalCarbs,
+        fat: newTotalFat,
+      },
+      weeklyPlan: updatedWeeklyPlan
     };
 
     if (onUpdatePlan) {
@@ -303,11 +379,27 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
     });
   };
 
+  const weeklyPlan = plan.weeklyPlan || [];
+  const rawCurrentDay = weeklyPlan[activeDay] || { day: '', meals: [] };
+  const currentDay = {
+    ...rawCurrentDay,
+    day: translateDay(rawCurrentDay.day, activeDay) || (lang === 'en' ? `Day ${activeDay + 1}` : `${activeDay + 1}. Gün`)
+  };
+  const currentMeals = currentDay.meals || [];
+  const totalDayCalories = currentMeals.reduce((sum, m) => sum + (Number(m.calories) || 0), 0);
+  const totalDayProtein = currentMeals.reduce((sum, m) => sum + (Number(m.protein) || 0), 0);
+  const totalDayCarbs = currentMeals.reduce((sum, m) => sum + (Number(m.carbs) || 0), 0);
+  const totalDayFat = currentMeals.reduce((sum, m) => sum + (Number(m.fat) || 0), 0);
+
+  const effectiveProtein = totalDayProtein > 0 ? totalDayProtein : (plan.macros?.protein || 0);
+  const effectiveCarbs = totalDayCarbs > 0 ? totalDayCarbs : (plan.macros?.carbs || 0);
+  const effectiveFat = totalDayFat > 0 ? totalDayFat : (plan.macros?.fat || 0);
+  const effectiveDailyCalories = totalDayCalories > 0 ? totalDayCalories : (plan.dailyCalories || 0);
+
   const calculateMacroPercentages = () => {
-    const macros = plan.macros || { protein: 0, carbs: 0, fat: 0 };
-    const protein = macros.protein || 0;
-    const carbs = macros.carbs || 0;
-    const fat = macros.fat || 0;
+    const protein = effectiveProtein;
+    const carbs = effectiveCarbs;
+    const fat = effectiveFat;
     const totalMacroCalories = (protein * 4) + (carbs * 4) + (fat * 9);
     if (totalMacroCalories === 0) return [];
 
@@ -361,8 +453,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
   const formatPlanToTxt = (plan: DietPlan): string => {
     let content = `NutriAI Kişiselleştirilmiş Diyet Planı\n========================================\n\n`;
     content += `ÖZET: ${plan.summary || ''}\n\n`;
-    const macros = plan.macros || { protein: 0, carbs: 0, fat: 0 };
-    content += `GÜNLÜK HEDEFLER:\n- Kalori: ${plan.dailyCalories || 0} kcal\n- Protein: ${macros.protein || 0} g\n- Karbonhidrat: ${macros.carbs || 0} g\n- Yağ: ${macros.fat || 0} g\n\n`;
+    content += `GÜNLÜK HEDEFLER:\n- Kalori: ${effectiveDailyCalories} kcal\n- Protein: ${effectiveProtein} g\n- Karbonhidrat: ${effectiveCarbs} g\n- Yağ: ${effectiveFat} g\n\n`;
     content += `DİYET PLANI DETAYLARI:\n----------------------------------------\n\n`;
     const weeklyPlan = plan.weeklyPlan || [];
     weeklyPlan.forEach((day, idx) => {
@@ -394,6 +485,77 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
     const exportedData = { userData, plan };
     const content = JSON.stringify(exportedData, null, 2);
     downloadFile(`NutriAI_Diyet_Plani.json`, content, 'application/json');
+  };
+
+  const handleDownloadPlanXlsx = () => {
+    const isTr = lang === 'tr';
+    const wb = XLSX.utils.book_new();
+
+    // 1. Weekly Meals Sheet
+    const mealRows: any[] = [];
+    const weeklyPlan = plan.weeklyPlan || [];
+    weeklyPlan.forEach((day, idx) => {
+      const dayName = translateDay(day.day, idx) || (isTr ? `${idx + 1}. Gün` : `Day ${idx + 1}`);
+      (day.meals || []).forEach(meal => {
+        mealRows.push({
+          [isTr ? 'Gün' : 'Day']: dayName,
+          [isTr ? 'Öğün Zamanı' : 'Time']: meal.time || '',
+          [isTr ? 'Yemek Adı' : 'Dish']: meal.dish || '',
+          [isTr ? 'Kalori (kcal)' : 'Calories (kcal)']: Number(meal.calories) || 0,
+          [isTr ? 'Protein (g)' : 'Protein (g)']: Number(meal.protein) || 0,
+          [isTr ? 'Karbonhidrat (g)' : 'Carbs (g)']: Number(meal.carbs) || 0,
+          [isTr ? 'Yağ (g)' : 'Fat (g)']: Number(meal.fat) || 0,
+          [isTr ? 'Açıklama' : 'Description']: meal.description || '',
+          [isTr ? 'Malzemeler' : 'Ingredients']: (meal.ingredients || []).join(', '),
+          [isTr ? 'Alternatifler' : 'Alternatives']: (meal.alternatives || []).join(', '),
+        });
+      });
+    });
+
+    const wsMeals = XLSX.utils.json_to_sheet(mealRows);
+    wsMeals['!cols'] = [
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 25 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 15 },
+      { wch: 10 },
+      { wch: 40 },
+      { wch: 40 },
+      { wch: 30 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsMeals, isTr ? 'Haftalık Plan' : 'Weekly Plan');
+
+    // 2. Summary Sheet
+    const summaryRows = [
+      { [isTr ? 'Parametre' : 'Parameter']: isTr ? 'Günlük Hedef Kalori' : 'Daily Calories Goal', [isTr ? 'Değer' : 'Value']: `${effectiveDailyCalories} kcal` },
+      { [isTr ? 'Parametre' : 'Parameter']: isTr ? 'Günlük Protein' : 'Daily Protein', [isTr ? 'Değer' : 'Value']: `${effectiveProtein} g` },
+      { [isTr ? 'Parametre' : 'Parameter']: isTr ? 'Günlük Karbonhidrat' : 'Daily Carbs', [isTr ? 'Değer' : 'Value']: `${effectiveCarbs} g` },
+      { [isTr ? 'Parametre' : 'Parameter']: isTr ? 'Günlük Yağ' : 'Daily Fat', [isTr ? 'Değer' : 'Value']: `${effectiveFat} g` },
+      { [isTr ? 'Parametre' : 'Parameter']: isTr ? 'Plan Özeti' : 'Plan Summary', [isTr ? 'Değer' : 'Value']: plan.summary || '' },
+    ];
+    (plan.tips || []).forEach((tip, i) => {
+      summaryRows.push({
+        [isTr ? 'Parametre' : 'Parameter']: `${isTr ? 'Tavsiye' : 'Tip'} ${i + 1}`,
+        [isTr ? 'Değer' : 'Value']: tip
+      });
+    });
+
+    const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+    wsSummary['!cols'] = [{ wch: 25 }, { wch: 60 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, isTr ? 'Özet ve Hedefler' : 'Summary & Goals');
+
+    // 3. Shopping List Sheet
+    const shoppingListItems = generateShoppingList();
+    const shoppingRows = shoppingListItems.map(item => ({
+      [isTr ? 'Alınacak Malzeme' : 'Shopping Item']: item
+    }));
+    const wsShopping = XLSX.utils.json_to_sheet(shoppingRows);
+    wsShopping['!cols'] = [{ wch: 40 }];
+    XLSX.utils.book_append_sheet(wb, wsShopping, isTr ? 'Alışveriş Listesi' : 'Shopping List');
+
+    XLSX.writeFile(wb, `NutriAI_Diyet_Plani.xlsx`);
   };
   
   const handleDownloadShoppingList = () => {
@@ -430,18 +592,10 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
 
   const macroData = calculateMacroPercentages();
   const barData = [
-    { name: t('protein'), grams: plan.macros?.protein || 0, fill: '#10b981' },
-    { name: t('carbs'), grams: plan.macros?.carbs || 0, fill: '#3b82f6' },
-    { name: t('fat'), grams: plan.macros?.fat || 0, fill: '#f59e0b' },
+    { name: t('protein'), grams: effectiveProtein, fill: '#10b981' },
+    { name: t('carbs'), grams: effectiveCarbs, fill: '#3b82f6' },
+    { name: t('fat'), grams: effectiveFat, fill: '#f59e0b' },
   ];
-  const weeklyPlan = plan.weeklyPlan || [];
-  const rawCurrentDay = weeklyPlan[activeDay] || { day: '', meals: [] };
-  const currentDay = {
-    ...rawCurrentDay,
-    day: translateDay(rawCurrentDay.day, activeDay) || (lang === 'en' ? `Day ${activeDay + 1}` : `${activeDay + 1}. Gün`)
-  };
-  const currentMeals = currentDay.meals || [];
-  const totalDayCalories = currentMeals.reduce((sum, m) => sum + (Number(m.calories) || 0), 0);
 
   const handleDownloadPDF = async () => {
     setIsGeneratingPdf(true);
@@ -585,10 +739,10 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
            <h2 className="text-xl font-bold mb-2 text-emerald-900">{t('summary')}</h2>
            <p className="text-emerald-800 leading-relaxed">{plan.summary}</p>
            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm font-bold">
-             <p className="text-emerald-900">{t('dailyCalories')}: {plan.dailyCalories} kcal</p>
-             <p className="text-emerald-900">{t('protein')}: {plan.macros?.protein} g</p>
-             <p className="text-emerald-900">{t('carbs')}: {plan.macros?.carbs} g</p>
-             <p className="text-emerald-900">{t('fat')}: {plan.macros?.fat} g</p>
+             <p className="text-emerald-900">{t('dailyCalories')}: {effectiveDailyCalories} kcal</p>
+             <p className="text-emerald-900">{t('protein')}: {effectiveProtein} g</p>
+             <p className="text-emerald-900">{t('carbs')}: {effectiveCarbs} g</p>
+             <p className="text-emerald-900">{t('fat')}: {effectiveFat} g</p>
            </div>
          </div>
          <div className="space-y-8">
@@ -609,64 +763,92 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
          </div>
        </div>
 
-       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white p-8 rounded-[2rem] shadow-sm border border-green-50 flex flex-col md:flex-row gap-8 relative overflow-hidden">
+       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 xl:gap-8">
+        <div className="lg:col-span-2 bg-white p-6 md:p-8 xl:p-10 rounded-[2.5rem] shadow-sm border border-green-50 flex flex-col xl:flex-row gap-8 xl:gap-10 relative overflow-hidden">
           <div className="flex-1 relative z-10">
             {sharedId ? (
-              <div className="mb-6 p-3 bg-emerald-50/50 border border-emerald-100 rounded-2xl flex items-center justify-between gap-3 text-xs text-emerald-800 animate-in fade-in duration-300 no-print">
-                <div className="flex items-center gap-2 truncate">
-                  <i className="fas fa-link text-emerald-600 shrink-0"></i>
-                  <span className="font-bold shrink-0 text-emerald-700">{t('shareLink')}</span>
-                  <span className="font-mono text-emerald-900 truncate select-all">{window.location.origin}/ID/{sharedId}</span>
+              <div className="mb-8 p-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl flex items-center justify-between gap-4 text-xs text-emerald-800 animate-in fade-in duration-300 no-print">
+                <div className="flex items-center gap-3 truncate">
+                  <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-sm border border-emerald-100 shrink-0">
+                    <i className="fas fa-link text-emerald-600"></i>
+                  </div>
+                  <div className="flex flex-col truncate">
+                    <span className="font-black text-emerald-700 uppercase tracking-wider text-[10px]">{t('shareLink')}</span>
+                    <span className="font-mono text-emerald-900 truncate select-all">{window.location.origin}/ID/{sharedId}</span>
+                  </div>
                 </div>
                 <button 
                   onClick={() => copyToClipboard(`${window.location.origin}/ID/${sharedId}`)}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shrink-0 flex items-center gap-1.5 active:scale-95 text-[11px]"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shrink-0 flex items-center gap-2 active:scale-95 text-xs shadow-sm"
                 >
                   <i className="fas fa-copy"></i>
                   {copySuccess ? t('copied') : t('copy')}
                 </button>
               </div>
             ) : (
-              <div className="mb-6 p-3 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-between gap-3 text-xs text-gray-500 animate-in fade-in duration-300 no-print">
-                <div className="flex items-center gap-2">
-                  <i className="fas fa-spinner fa-spin text-emerald-600"></i>
-                  <span>{t('generatingShareLink')}</span>
+              <div className="mb-8 p-4 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-between gap-4 text-xs text-gray-500 animate-in fade-in duration-300 no-print">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-sm border border-gray-100 shrink-0">
+                    <i className="fas fa-spinner fa-spin text-emerald-600"></i>
+                  </div>
+                  <span className="font-bold">{t('generatingShareLink')}</span>
                 </div>
               </div>
             )}
-            <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-extrabold text-green-950 tracking-tight">{t('planSummary')}</h2>
-          <div className="flex gap-2 no-print">
-            <button onClick={() => { setLang('tr'); localStorage.setItem('lang', 'tr'); window.dispatchEvent(new CustomEvent('languageChange')); }} className={`px-2 py-1 text-xs font-bold rounded ${lang === 'tr' ? 'bg-emerald-600 text-white' : 'bg-gray-200'}`}>TR</button>
-            <button onClick={() => { setLang('en'); localStorage.setItem('lang', 'en'); window.dispatchEvent(new CustomEvent('languageChange')); }} className={`px-2 py-1 text-xs font-bold rounded ${lang === 'en' ? 'bg-emerald-600 text-white' : 'bg-gray-200'}`}>EN</button>
-          </div>
-          <button 
-            onClick={handleEditGeneralClick}
-            className="px-4 py-2 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-all flex items-center gap-1.5 no-print animate-in fade-in duration-300"
-          >
-            <i className="fas fa-edit text-[10px]"></i> {t('editGoals')}
-          </button>
-        </div>
-            <p className="text-green-800/80 leading-relaxed font-medium mb-8">{plan.summary}</p>
-            
-            <div className="flex flex-wrap gap-4">
-              <div className="bg-emerald-50/50 px-6 py-4 rounded-2xl border border-emerald-100 flex flex-col min-w-[140px]">
-                <span className="text-[10px] text-emerald-600 font-extrabold uppercase tracking-widest mb-1">{t('dailyCalories')}</span>
-                <span className="text-2xl font-black text-emerald-900">{plan.dailyCalories} kcal</span>
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+              <h2 className="text-3xl md:text-4xl font-black text-green-950 tracking-tight">{t('planSummary')}</h2>
+              <div className="flex items-center gap-3 no-print">
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                  <button onClick={() => { setLang('tr'); localStorage.setItem('lang', 'tr'); window.dispatchEvent(new CustomEvent('languageChange')); }} className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all ${lang === 'tr' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>TR</button>
+                  <button onClick={() => { setLang('en'); localStorage.setItem('lang', 'en'); window.dispatchEvent(new CustomEvent('languageChange')); }} className={`px-3 py-1.5 text-xs font-black rounded-lg transition-all ${lang === 'en' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>EN</button>
+                </div>
+                <button 
+                  onClick={handleEditGeneralClick}
+                  className="px-5 py-2.5 text-xs font-black text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-all flex items-center gap-2 no-print shadow-sm shadow-amber-100/50"
+                >
+                  <i className="fas fa-edit"></i> {t('editGoals')}
+                </button>
               </div>
-              <div className="bg-blue-50/50 px-6 py-4 rounded-2xl border border-blue-100 flex flex-col min-w-[140px]">
-                <span className="text-[10px] text-blue-600 font-extrabold uppercase tracking-widest mb-1">{t('basalMetabolism')}</span>
-                <span className="text-2xl font-black text-blue-900">~{bmr} kcal</span>
+            </div>
+            <p className="text-green-800/80 leading-relaxed font-medium text-lg mb-10">{plan.summary}</p>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-emerald-50/50 px-5 py-4 rounded-2xl border border-emerald-100 flex flex-col group hover:bg-emerald-50 transition-colors">
+                <span className="text-[10px] text-emerald-600 font-black uppercase tracking-wider mb-1">{t('dailyCalories')}</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-black text-emerald-950">{effectiveDailyCalories}</span>
+                  <span className="text-xs font-bold text-emerald-600">kcal</span>
+                </div>
+              </div>
+              <div className="bg-emerald-50/30 px-5 py-4 rounded-2xl border border-emerald-100/70 flex flex-col group hover:bg-emerald-50/60 transition-colors">
+                <span className="text-[10px] text-emerald-700 font-black uppercase tracking-wider mb-1">{t('protein')}</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-black text-emerald-950">{effectiveProtein}</span>
+                  <span className="text-xs font-bold text-emerald-600">g</span>
+                </div>
+              </div>
+              <div className="bg-blue-50/30 px-5 py-4 rounded-2xl border border-blue-100/70 flex flex-col group hover:bg-blue-50/60 transition-colors">
+                <span className="text-[10px] text-blue-700 font-black uppercase tracking-wider mb-1">{t('carbs')}</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-black text-blue-950">{effectiveCarbs}</span>
+                  <span className="text-xs font-bold text-blue-600">g</span>
+                </div>
+              </div>
+              <div className="bg-amber-50/30 px-5 py-4 rounded-2xl border border-amber-100/70 flex flex-col group hover:bg-amber-50/60 transition-colors">
+                <span className="text-[10px] text-amber-700 font-black uppercase tracking-wider mb-1">{t('fat')}</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-black text-amber-950">{effectiveFat}</span>
+                  <span className="text-xs font-bold text-amber-600">g</span>
+                </div>
               </div>
             </div>
           </div>
           
-          <div className="w-full md:w-80 flex flex-col items-center justify-center relative z-10 gap-8">
-            <div className="w-full h-48" ref={chartContainerRef}>
+          <div className="w-full xl:w-80 2xl:w-96 flex flex-col items-center justify-center relative z-10 gap-10 bg-slate-50/30 p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shrink-0">
+            <div className="w-full h-56" ref={chartContainerRef}>
               {isGeneratingPdf && chartContainerRef.current ? (
                  <PieChart width={chartContainerRef.current.offsetWidth} height={chartContainerRef.current.offsetHeight}>
-                    <Pie data={macroData} cx="50%" cy="50%" innerRadius={65} outerRadius={85} paddingAngle={8} dataKey="value" stroke="none">
+                    <Pie data={macroData} cx="50%" cy="50%" innerRadius={75} outerRadius={100} paddingAngle={8} dataKey="value" stroke="none">
                       {macroData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
                     </Pie>
                     <Tooltip formatter={(value: number, name: string) => [`${value.toFixed(1)}%`, name]} />
@@ -674,7 +856,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={macroData} cx="50%" cy="50%" innerRadius={65} outerRadius={85} paddingAngle={8} dataKey="value" stroke="none">
+                    <Pie data={macroData} cx="50%" cy="50%" innerRadius={75} outerRadius={100} paddingAngle={8} dataKey="value" stroke="none">
                       {macroData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
                     </Pie>
                     <Tooltip formatter={(value: number, name: string) => [`${value.toFixed(1)}%`, name]} />
@@ -683,31 +865,36 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
               )}
             </div>
             
-            <div className="w-full h-48">
+            <div className="w-full h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" fontSize={10} />
-                  <YAxis fontSize={10} />
-                  <Tooltip />
-                  <Bar dataKey="grams" name={lang === 'tr' ? 'Gram' : 'Grams'} />
+                <BarChart data={barData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="name" fontSize={11} fontWeight="bold" axisLine={false} tickLine={false} />
+                  <YAxis fontSize={11} fontWeight="bold" axisLine={false} tickLine={false} />
+                  <Tooltip cursor={{fill: '#f1f5f9'}} />
+                  <Bar dataKey="grams" name={lang === 'tr' ? 'Gram' : 'Grams'} radius={[6, 6, 0, 0]} barSize={40} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
             
-            <div className="flex justify-center gap-4 text-[10px] font-bold mt-4"> 
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> P</span>
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-500"></span> C</span>
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-500"></span> F</span>
+            <div className="flex justify-center gap-6 text-xs font-black tracking-widest mt-2"> 
+              <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-emerald-500 shadow-sm shadow-emerald-200"></span> PROTEİN</span>
+              <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500 shadow-sm shadow-blue-200"></span> KARB</span>
+              <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-amber-500 shadow-sm shadow-amber-200"></span> YAĞ</span>
             </div>
           </div>
         </div>
-        <div className="bg-[#064e3b] text-white p-8 rounded-[2rem] shadow-xl shadow-green-900/10">
-          <h3 className="text-2xl font-black mb-6 flex items-center gap-3"><i className="fas fa-lightbulb text-amber-400"></i> {t('recommendations')}</h3>
-          <ul className="space-y-4">
-            {(plan.tips || []).slice(0, 5).map((tip, i) => (
-              <li key={i} className="flex gap-4 text-sm font-medium text-emerald-50/90 leading-snug">
-                <i className="fas fa-check-circle text-emerald-400 mt-0.5 text-base shrink-0"></i>
+        <div className="bg-[#064e3b] text-white p-8 md:p-10 rounded-[2.5rem] shadow-xl shadow-green-900/10 flex flex-col">
+          <h3 className="text-2xl font-black mb-8 flex items-center gap-4">
+            <div className="w-10 h-10 bg-amber-400 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-400/20 text-emerald-950">
+              <i className="fas fa-lightbulb text-xl"></i>
+            </div>
+            {t('recommendations')}
+          </h3>
+          <ul className="space-y-6 flex-1">
+            {(plan.tips || []).slice(0, 6).map((tip, i) => (
+              <li key={i} className="flex gap-5 text-sm md:text-base font-medium text-emerald-50/90 leading-relaxed group">
+                <i className="fas fa-check-circle text-emerald-400 mt-1 text-lg shrink-0 group-hover:scale-110 transition-transform"></i>
                 <span>{tip}</span>
               </li>
             ))}
@@ -731,33 +918,176 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
         </div>
       )}
 
+      {/* Weight Progress Chart Card */}
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-emerald-100/80 animate-in fade-in duration-500">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-700 shadow-sm">
+                <i className="fas fa-weight text-lg"></i>
+              </div>
+              <h3 className="text-2xl font-black text-emerald-950 tracking-tight">{t('weightProgress')}</h3>
+            </div>
+            <p className="text-sm text-slate-500 mt-1 font-medium">
+              {lang === 'tr' ? 'Kilonuzu düzenli kaydederek gelişiminizi grafik üzerinde takip edin.' : 'Log your weight regularly to track your progress on the line chart.'}
+            </p>
+          </div>
+
+          {/* Stat Badges if data exists */}
+          {localWeightHistory.length > 0 && (
+            <div className="flex flex-wrap gap-3 items-center">
+              <div className="bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100 text-xs font-bold text-emerald-900">
+                <span className="text-emerald-600 block text-[10px] uppercase font-black">{lang === 'tr' ? 'Son Kilo' : 'Latest Weight'}</span>
+                <span className="text-lg font-black">{localWeightHistory[localWeightHistory.length - 1].weight} kg</span>
+              </div>
+              {localWeightHistory.length > 1 && (
+                <div className="bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 text-xs font-bold text-blue-900">
+                  <span className="text-blue-600 block text-[10px] uppercase font-black">{lang === 'tr' ? 'Toplam Değişim' : 'Total Change'}</span>
+                  <span className={`text-lg font-black ${
+                    localWeightHistory[localWeightHistory.length - 1].weight - localWeightHistory[0].weight < 0 
+                      ? 'text-emerald-600' 
+                      : localWeightHistory[localWeightHistory.length - 1].weight - localWeightHistory[0].weight > 0 
+                      ? 'text-amber-600' 
+                      : 'text-slate-600'
+                  }`}>
+                    {(localWeightHistory[localWeightHistory.length - 1].weight - localWeightHistory[0].weight).toFixed(1)} kg
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          {/* Line Chart */}
+          <div className="lg:col-span-2 bg-slate-50/50 p-4 sm:p-6 rounded-2xl border border-slate-100">
+            {localWeightHistory.length > 0 ? (
+              <div className="w-full h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={localWeightHistory} margin={{ top: 15, right: 20, left: -10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="date" fontSize={11} fontWeight="bold" stroke="#64748b" tickLine={false} />
+                    <YAxis domain={['dataMin - 1', 'dataMax + 1']} fontSize={11} fontWeight="bold" stroke="#64748b" tickLine={false} unit=" kg" />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
+                      labelStyle={{ fontWeight: 'bold', color: '#0f172a' }}
+                      formatter={(value: number) => [`${value} kg`, t('weightKg')]} 
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="weight" 
+                      name={t('weightKg')} 
+                      stroke="#10b981" 
+                      strokeWidth={3} 
+                      dot={{ r: 5, fill: '#10b981', strokeWidth: 2, stroke: '#ffffff' }} 
+                      activeDot={{ r: 8, fill: '#059669' }} 
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-64 flex flex-col items-center justify-center text-center p-6 text-slate-400">
+                <i className="fas fa-chart-line text-4xl mb-3 text-emerald-300"></i>
+                <p className="font-bold text-sm text-slate-600">{t('noWeightHistory')}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Form to add weight */}
+          <div className="bg-emerald-50/40 p-6 rounded-2xl border border-emerald-100/80 flex flex-col justify-between no-print">
+            <div>
+              <h4 className="text-base font-extrabold text-emerald-950 mb-4 flex items-center gap-2">
+                <i className="fas fa-plus-circle text-emerald-600"></i> {t('addWeight')}
+              </h4>
+              <form onSubmit={handleAddWeight} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-emerald-800 mb-1">{t('weightKg')}</label>
+                  <input 
+                    type="number" 
+                    step="0.1" 
+                    placeholder="Örn: 72.5" 
+                    value={newWeight} 
+                    onChange={(e) => setNewWeight(e.target.value)} 
+                    required 
+                    className="w-full px-4 py-2.5 rounded-xl border border-emerald-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-slate-800 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-emerald-800 mb-1">{t('dateLabel')}</label>
+                  <input 
+                    type="date" 
+                    value={newWeightDate} 
+                    onChange={(e) => setNewWeightDate(e.target.value)} 
+                    required 
+                    className="w-full px-4 py-2.5 rounded-xl border border-emerald-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-slate-800 text-sm"
+                  />
+                </div>
+                <button 
+                  type="submit" 
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-sm transition-all shadow-md shadow-emerald-600/20 active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <i className="fas fa-check"></i> {t('addWeight')}
+                </button>
+              </form>
+            </div>
+
+            {/* History Table List */}
+            {localWeightHistory.length > 0 && (
+              <div className="mt-6 pt-4 border-t border-emerald-200/60">
+                <span className="text-[11px] font-black uppercase text-emerald-800 tracking-wider mb-2 block">
+                  {lang === 'tr' ? 'Son Kayıtlar' : 'Recent Entries'}
+                </span>
+                <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                  {localWeightHistory.slice(-5).reverse().map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-white px-3 py-1.5 rounded-lg border border-emerald-100 text-xs font-medium text-slate-700">
+                      <span className="font-mono text-slate-500">{item.date}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-emerald-950">{item.weight} kg</span>
+                        <button 
+                          type="button" 
+                          onClick={() => handleDeleteWeight(item.date)} 
+                          className="text-slate-300 hover:text-red-500 transition-colors"
+                          title={lang === 'tr' ? 'Sil' : 'Delete'}
+                        >
+                          <i className="fas fa-trash-alt text-[10px]"></i>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Daily Selection */}
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-green-50 overflow-hidden">
-        <div className="flex overflow-x-auto p-5 gap-3 border-b border-green-50 scrollbar-hide no-print">
+        <div className="flex overflow-x-auto p-4 md:p-6 gap-3 border-b border-green-50 scrollbar-hide no-print bg-slate-50/50">
           {(plan.weeklyPlan || []).map((day, idx) => (
-            <button key={idx} onClick={() => setActiveDay(idx)} className={`px-8 py-3.5 rounded-2xl font-bold whitespace-nowrap transition-all duration-300 ${activeDay === idx ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200 ring-4 ring-emerald-500/10 scale-105' : 'text-emerald-700 hover:bg-emerald-50'}`} aria-current={activeDay === idx ? 'page' : undefined}>
+            <button key={idx} onClick={() => setActiveDay(idx)} className={`px-8 py-4 rounded-2xl font-black text-sm whitespace-nowrap transition-all duration-300 ${activeDay === idx ? 'bg-emerald-600 text-white shadow-xl shadow-emerald-200 ring-4 ring-emerald-600/10 scale-105' : 'text-emerald-700 hover:bg-emerald-100 hover:text-emerald-900'}`} aria-current={activeDay === idx ? 'page' : undefined}>
               {translateDay(day.day, idx)}
             </button>
           ))}
         </div>
 
         <div className="p-8 md:p-12">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-10 gap-4">
-            <h3 className="text-3xl font-black text-emerald-950">{currentDay.day || (lang === 'tr' ? `${activeDay + 1}. Gün` : `Day ${activeDay + 1}`)} {t('menu')}</h3>
-            <div className="flex flex-wrap gap-3 items-center">
-              <span className="bg-emerald-100/80 text-emerald-800 px-6 py-2.5 rounded-2xl text-sm font-black border border-emerald-200 dashed border-dashed">
-                {totalDayCalories} {t('totalCalories')}
-              </span>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-12 gap-6">
+            <h3 className="text-4xl font-black text-emerald-950 tracking-tight">{currentDay.day || (lang === 'tr' ? `${activeDay + 1}. Gün` : `Day ${activeDay + 1}`)} {t('menu')}</h3>
+            <div className="flex flex-wrap gap-3 sm:gap-4 items-center">
               <div ref={downloadMenuRef} className="relative inline-block text-left no-print">
-                <button onClick={() => setShowDownloadOptions(prev => !prev)} type="button" className="inline-flex justify-center items-center w-full rounded-2xl border border-gray-200 shadow-sm px-4 py-3 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
-                  <i className="fas fa-download mr-2"></i> {t('download')}
-                  <i className="fas fa-chevron-down -mr-1 ml-2 h-5 w-5 text-xs"></i>
+                <button onClick={() => setShowDownloadOptions(prev => !prev)} type="button" className="inline-flex justify-center items-center w-full rounded-2xl border-2 border-slate-100 shadow-sm px-6 py-3.5 bg-white text-sm font-black text-slate-700 hover:bg-slate-50 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  <i className="fas fa-download mr-3 text-emerald-600"></i> {t('download')}
+                  <i className="fas fa-chevron-down ml-3 text-[10px] text-slate-400"></i>
                 </button>
                 {showDownloadOptions && (
                   <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
                     <div className="py-1">
                       <button onClick={() => { handleDownloadPDF(); setShowDownloadOptions(false); }} disabled={isGeneratingPdf} className="text-gray-700 disabled:opacity-50 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
                         {isGeneratingPdf ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-file-pdf mr-2 text-red-500"></i>} {t('pdf')}
+                      </button>
+                      <button onClick={() => { handleDownloadPlanXlsx(); setShowDownloadOptions(false); }} className="text-gray-700 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
+                        <i className="fas fa-file-excel mr-2 text-emerald-600"></i> {t('excel')}
                       </button>
                       <button onClick={() => { handleDownloadPlanTxt(); setShowDownloadOptions(false); }} className="text-gray-700 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
                         <i className="fas fa-file-alt mr-2 text-blue-500"></i> {t('txt')}
@@ -772,12 +1102,12 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
                   </div>
                 )}
               </div>
-              <button onClick={() => setShowShoppingList(true)} className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-2xl shadow-lg shadow-blue-100 transition-all active:scale-95 no-print" title={t('shoppingList')}>
+              <button onClick={() => setShowShoppingList(true)} className="bg-blue-600 hover:bg-blue-700 text-white w-12 h-12 flex items-center justify-center rounded-2xl shadow-xl shadow-blue-200 transition-all active:scale-95 no-print" title={t('shoppingList')}>
                 <i className="fas fa-shopping-basket"></i>
               </button>
               <button 
                 onClick={handleDownloadPDF} 
-                className="flex items-center gap-2 px-6 py-3 rounded-2xl shadow-lg transition-all active:scale-95 no-print font-bold bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
+                className="flex items-center gap-3 px-8 py-3.5 rounded-2xl shadow-xl transition-all active:scale-95 no-print font-black text-sm bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
                 title={t('print')}
               >
                 <i className="fas fa-print"></i>
@@ -786,7 +1116,7 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
               <button 
                 onClick={handleShare} 
                 disabled={isSharing}
-                className={`flex items-center gap-2 px-6 py-3 rounded-2xl shadow-lg transition-all active:scale-95 no-print font-bold ${sharedId ? 'bg-green-600 hover:bg-green-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white disabled:opacity-50`}
+                className={`flex items-center gap-3 px-8 py-3.5 rounded-2xl shadow-xl transition-all active:scale-95 no-print font-black text-sm ${sharedId ? 'bg-green-600 hover:bg-green-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white disabled:opacity-50`}
                 title={t('share')}
               >
                 {isSharing ? (
@@ -800,29 +1130,10 @@ const DietDashboard: React.FC<DietDashboardProps> = ({ plan, userData, onReset, 
               </button>
             </div>
             
-            {/* Paylaşım Linki Gösterge Paneli */}
-            {sharedId && (
-              <div className="mt-4 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300 no-print">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
-                    <i className="fas fa-link"></i>
-                  </div>
-                  <div>
-                    <p className="text-xs text-emerald-600 font-medium uppercase tracking-wider">{t('planAccessLink')}</p>
-                    <p className="text-sm font-mono text-emerald-800 break-all">{window.location.origin}/ID/{sharedId}</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => copyToClipboard(`${window.location.origin}/ID/${sharedId}`)}
-                  className="px-4 py-2 bg-white text-emerald-600 border border-emerald-200 rounded-xl text-sm font-bold hover:bg-emerald-50 transition-colors shrink-0"
-                >
-                  {copySuccess ? t('copied') : t('copy')}
-                </button>
-              </div>
-            )}
+
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
             <AnimatePresence mode="wait">
               <motion.div 
                 key={activeDay}

@@ -7,6 +7,7 @@ import UserForm from './components/UserForm';
 import DietDashboard from './components/DietDashboard';
 import LoadingState from './components/LoadingState';
 import QuestionStep from './components/QuestionStep';
+import AssistantWidget from './components/AssistantWidget';
 import { UserData, DietPlan, WeightEntry } from './types';
 import { analyzeAndAsk, generateFinalPlan } from './services/geminiService';
 import { getDietPlan } from './services/firebase';
@@ -233,6 +234,12 @@ const Home: React.FC = () => {
                   weightHistory={weightHistory}
                   planId={planId}
                   onUpdatePlan={(updatedPlan) => setDietPlan(updatedPlan)}
+                />
+                <AssistantWidget
+                  plan={dietPlan}
+                  userData={userData}
+                  onUpdatePlan={(updatedPlan) => setDietPlan(updatedPlan)}
+                  planId={planId}
                 />
               </motion.div>
             )}

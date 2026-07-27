@@ -15,6 +15,7 @@ export const translations = {
     menu: "Menüsü",
     download: "İndir",
     pdf: "Plan (PDF)",
+    excel: "Plan (Excel)",
     txt: "Plan (Metin)",
     json: "Plan (JSON)",
     shoppingList: "Alışveriş Listesi",
@@ -33,6 +34,22 @@ export const translations = {
     warningText: "Bu düzenleme paneli ve diyet planı değişiklik özellikleri yalnızca profesyonel diyetisyenler ve beslenme uzmanları tarafından kullanılmalıdır.",
     warningConfirm: "Evet, Onaylıyorum",
     warningCancel: "Vazgeç",
+    weightProgress: "Kilo Gelişimi Takibi",
+    addWeight: "Kilo Kaydet",
+    weightKg: "Kilo (kg)",
+    dateLabel: "Tarih",
+    noWeightHistory: "Kilo gelişiminizi görmek için yeni bir kilo kaydı ekleyin.",
+
+    // Assistant Widget
+    assistantTitle: "NutriAI Diyet Asistanı",
+    assistantBadge: "Planınızı Görüyor",
+    assistantPlaceholder: "Diyetiniz hakkında sorun veya değişiklik isteyin...",
+    assistantProposalTitle: "Diyet Planı Düzenleme Teklifi",
+    assistantApprove: "Onayla ve Uygula",
+    assistantReject: "Reddet",
+    assistantApproved: "Onaylandı ve Plan Güncellendi",
+    assistantRejected: "Teklif Reddedildi",
+    assistantWelcome: "Merhaba! Diyet planınızı detaylıca inceledim. Bana yemekleriniz hakkında sorular sorabilir veya 'Salı akşam yemeğini tavuk ile değiştir', 'Günlük kalorimi 1500 yap' gibi değişiklikler isteyebilirsiniz.",
 
     // App Main & Home Screen
     heroTitle: "Kişiselleştirilmiş Yapay Zeka Diyetisyeniniz",
@@ -169,6 +186,7 @@ export const translations = {
     menu: "Menu",
     download: "Download",
     pdf: "Plan (PDF)",
+    excel: "Plan (Excel)",
     txt: "Plan (Text)",
     json: "Plan (JSON)",
     shoppingList: "Shopping List",
@@ -187,6 +205,22 @@ export const translations = {
     warningText: "This editing panel and diet plan modification features are intended for use only by professional dietitians and nutritionists.",
     warningConfirm: "Yes, I Confirm",
     warningCancel: "Cancel",
+    weightProgress: "Weight Progress",
+    addWeight: "Log Weight",
+    weightKg: "Weight (kg)",
+    dateLabel: "Date",
+    noWeightHistory: "Log a weight entry to start tracking your progress.",
+
+    // Assistant Widget
+    assistantTitle: "NutriAI Diet Assistant",
+    assistantBadge: "Viewing Your Plan",
+    assistantPlaceholder: "Ask about your diet or request edits...",
+    assistantProposalTitle: "Diet Plan Edit Proposal",
+    assistantApprove: "Approve & Apply",
+    assistantReject: "Reject",
+    assistantApproved: "Approved & Plan Updated",
+    assistantRejected: "Proposal Rejected",
+    assistantWelcome: "Hello! I have thoroughly reviewed your diet plan. Ask me anything about your meals or request edits like 'Change Tuesday dinner to chicken', 'Set daily calories to 1500'.",
 
     // App Main & Home Screen
     heroTitle: "Your Personalized AI Dietitian",
